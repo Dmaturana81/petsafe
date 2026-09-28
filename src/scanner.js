@@ -52,12 +52,12 @@ export function mountScanner(root, { mode = 'identify', label = 'Escanear', onDo
 
   root.innerHTML = `
     <div class="scanner">
-      <div class="scan-hint" aria-live="polite"><small></small><span></span></div>
       <div class="scan-frame">
         <video playsinline muted autoplay></video>
         <img class="scan-preview" alt="" hidden>
         <svg class="scan-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47" pathLength="100"/></svg>
       </div>
+      <div class="scan-hint" aria-live="polite"><small></small><span></span></div>
       <div class="shots">${steps.map((step, i) => `<button type="button" class="shot" data-i="${i}" title="${esc(step.text)}"><span>${step.kind === 'nose' ? '👃' : i + 1}</span></button>`).join('')}</div>
       <p class="muted small center shots-help" hidden>¿Alguna no quedó bien? Tócala para quitarla y tomarla de nuevo.</p>
       <p class="scan-status" aria-live="polite">Preparando cámara…</p>
@@ -123,7 +123,7 @@ export function mountScanner(root, { mode = 'identify', label = 'Escanear', onDo
     });
     $('.shots-help').hidden = !count();
     const n = next();
-    // Instrucción de la captura que sigue, grande y sobre la cámara.
+    // Instrucción de la captura que sigue, grande, sobre los números de las fotos.
     hint.querySelector('span').textContent = steps[n]?.text || '';
     hint.querySelector('small').textContent = kindAt(n) === 'nose'
       ? 'Nariz'
