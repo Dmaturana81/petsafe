@@ -1,18 +1,29 @@
-import { saveUser, listUsers, switchUser, myPets, removeMyPet, contactAdmin, CLOUD } from '../data.js';
+import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, CLOUD } from '../data.js';
 import { askPermission, notificationsSupported } from '../notify.js';
 import { esc, toast, go, isComplete } from '../ui.js';
+import { SPECIES, breedOptions, describe } from '../breeds.js';
 
 export default async function profile(el, _params, { user, refresh }) {
   // Con Supabase cada celular es un usuario; cambiar de usuario es solo para pruebas locales.
   const [users, pets] = await Promise.all([CLOUD ? [] : listUsers(), user ? myPets(user) : []]);
   const others = users.filter((u) => u.id !== user?.id);
   const perm = notificationsSupported() ? Notification.permission : 'unsupported';
+  // Perfil ya guardado: se muestran los datos y solo se editan al tocar "Editar".
+  const saved = isComplete(user);
 
   el.innerHTML = `
     <div class="card">
       <h1>${user ? 'Tu perfil' : 'Bienvenido a Kiltrazo 🐾'}</h1>
-      ${!user ? '<p>Cuéntanos quién eres.</p>' : isComplete(user) ? '' : '<p class="note">Completa tus datos para seguir usando Kiltrazo.</p>'}
-      <form class="form" id="profile">
+      ${!user ? '<p>Cuéntanos quién eres.</p>' : saved ? '' : '<p class="note">Completa tus datos para seguir usando Kiltrazo.</p>'}
+      ${saved ? `
+        <dl class="info" id="profile-view">
+          <dt>Nombre</dt><dd>${esc(`${user.firstName || user.name} ${user.lastName || ''}`.trim())}</dd>
+          <dt>Teléfono (WhatsApp)</dt><dd>${esc(user.phone)}</dd>
+          <dt>Correo</dt><dd>${esc(user.email)}</dd>
+          <dt>Dirección</dt><dd>${esc(user.address)}</dd>
+        </dl>
+        <button class="btn secondary" id="edit-profile">✏️ Editar mis datos</button>` : ''}
+      <form class="form" id="profile" ${saved ? 'hidden' : ''}>
         <label>Nombres<input name="firstName" required value="${esc(user?.firstName || user?.name)}" autocomplete="given-name"></label>
         <label>Apellidos<input name="lastName" required value="${esc(user?.lastName)}" autocomplete="family-name"></label>
         <label>Teléfono (WhatsApp)<input name="phone" type="tel" required placeholder="+56 9 1234 5678" value="${esc(user?.phone)}" autocomplete="tel"></label>
@@ -20,6 +31,7 @@ export default async function profile(el, _params, { user, refresh }) {
         <label>Dirección<input name="address" required placeholder="Calle, número, comuna" value="${esc(user?.address)}" autocomplete="street-address"></label>
         <p class="muted small">Tu nombre y teléfono solo se comparten con el dueño de una mascota que encuentres. El correo y la dirección solo los ve el administrador de Kiltrazo.</p>
         <button class="btn primary big">${user ? 'Guardar' : 'Comenzar'}</button>
+        ${saved ? '<button type="button" class="btn ghost" id="cancel-profile">Cancelar</button>' : ''}
       </form>
     </div>
 
@@ -32,9 +44,28 @@ export default async function profile(el, _params, { user, refresh }) {
 
       <div class="card">
         <h2>Mis mascotas</h2>
-        ${pets.length ? `<ul class="pet-list">${pets.map((p) => `
-          <li><img src="${esc(p.photo)}" alt=""><span><strong>${esc(p.name)}</strong><small>${p.status === 'lost' ? '🔴 Perdida' : '🟢 En casa'}</small></span>
-          <button class="btn small danger" data-delpet="${p.id}" aria-label="Eliminar ${esc(p.name)}">Eliminar</button></li>`).join('')}</ul>`
+        ${pets.length ? `<ul class="pet-list my-pets">${pets.map((p) => `
+          <li data-pet="${esc(p.id)}">
+            <div class="pet-row">
+              <img src="${esc(p.photo)}" alt="">
+              <span><strong>${esc(p.name)}</strong><small>${[describe(p), p.status === 'lost' ? '🔴 Perdida' : '🟢 En casa'].filter(Boolean).map(esc).join(' · ')}</small></span>
+              <button class="btn small secondary" data-editpet aria-label="Editar ${esc(p.name)}">Editar</button>
+            </div>
+            <form class="form pet-edit" hidden>
+              <label>Nombre<input name="name" required value="${esc(p.name)}"></label>
+              <label>Tipo<select name="species">
+                <option value="">No sé</option>
+                ${Object.entries(SPECIES).map(([v, t]) => `<option value="${v}" ${p.species === v ? 'selected' : ''}>${t}</option>`).join('')}
+              </select></label>
+              <label>Raza<input name="breed" list="breeds-${esc(p.id)}" value="${esc(p.breed)}" autocomplete="off"></label>
+              <datalist id="breeds-${esc(p.id)}">${breedOptions(p.species)}</datalist>
+              <label>Enfermedades<textarea name="diseases" rows="2">${esc(p.diseases)}</textarea></label>
+              <label>Vacunas<textarea name="vaccines" rows="2">${esc(p.vaccines)}</textarea></label>
+              <button class="btn primary">Guardar cambios</button>
+              <button type="button" class="btn ghost" data-cancel>Cancelar</button>
+              <button type="button" class="btn small danger" data-delpet="${esc(p.id)}">Eliminar a ${esc(p.name)}</button>
+            </form>
+          </li>`).join('')}</ul>`
         : '<p>Aún no registras mascotas.</p>'}
         <a class="btn secondary" href="#/registrar">Registrar mascota</a>
       </div>
@@ -68,6 +99,50 @@ export default async function profile(el, _params, { user, refresh }) {
     if (!user) await askPermission();
     toast('¡Listo!', 'ok');
     isComplete(user) ? refresh() : go('#/');
+  });
+
+  const profileForm = el.querySelector('#profile');
+  el.querySelector('#edit-profile')?.addEventListener('click', (e) => {
+    profileForm.hidden = false;
+    el.querySelector('#profile-view').hidden = true;
+    e.target.hidden = true;
+    profileForm.querySelector('input').focus();
+  });
+  el.querySelector('#cancel-profile')?.addEventListener('click', () => refresh());
+
+  el.querySelectorAll('.my-pets li').forEach((li) => {
+    const pet = pets.find((p) => p.id === li.dataset.pet);
+    const form = li.querySelector('.pet-edit');
+    const toggle = (open) => {
+      form.hidden = !open;
+      li.querySelector('[data-editpet]').hidden = open;
+    };
+    li.querySelector('[data-editpet]').addEventListener('click', () => toggle(true));
+    form.querySelector('[data-cancel]').addEventListener('click', () => { form.reset(); toggle(false); });
+    form.species.addEventListener('change', () => {
+      li.querySelector('datalist').innerHTML = breedOptions(form.species.value);
+    });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = new FormData(form);
+      const btn = form.querySelector('button');
+      btn.disabled = true;
+      try {
+        await savePet({
+          ...pet,
+          name: f.get('name').trim(),
+          species: f.get('species'),
+          breed: f.get('breed').trim(),
+          diseases: f.get('diseases').trim(),
+          vaccines: f.get('vaccines').trim(),
+        });
+        toast('Cambios guardados', 'ok');
+        refresh();
+      } catch (err) {
+        toast(`No se pudo guardar: ${err.message}`);
+        btn.disabled = false;
+      }
+    });
   });
 
   el.querySelectorAll('[data-delpet]').forEach((b) =>

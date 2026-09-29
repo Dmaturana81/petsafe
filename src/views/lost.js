@@ -1,5 +1,5 @@
-import { myPets, reportLost } from '../data.js';
-import { esc, go, changed } from '../ui.js';
+import { myPets, reportLost, claimFound } from '../data.js';
+import { esc, go, changed, timeAgo, toast } from '../ui.js';
 import { describe } from '../breeds.js';
 
 // "Perdí mi mascota": activa el aviso y busca en los avisos de "encontré".
@@ -37,16 +37,44 @@ export default async function lost(el, _params, { user }) {
       const result = el.querySelector('#result');
       result.innerHTML = `<div class="card center"><div class="spinner"></div><p>Buscando a ${esc(pet.name)}…</p></div>`;
       result.scrollIntoView({ behavior: 'smooth' });
-      const match = await reportLost(pet);
+      let res;
+      try {
+        res = await reportLost(pet);
+      } catch (err) {
+        result.innerHTML = `<div class="card center"><h2>No se pudo activar el aviso</h2><p>${esc(err.message)}</p><p class="muted">Revisa tu conexión e inténtalo de nuevo.</p></div>`;
+        return;
+      }
       changed();
-      if (match) return go(`#/encontrada/${match.id}`);
+      if (res.match) return go(`#/encontrada/${res.match.id}`);
       result.innerHTML = `
         <div class="card center">
           <div class="empty-emoji">📣</div>
           <h2>Aviso activo para ${esc(pet.name)}</h2>
-          <p>Todavía nadie la ha escaneado. Te enviaremos una notificación al celular apenas alguien la encuentre.</p>
-          <a class="btn secondary" href="#/">Volver al inicio</a>
-        </div>`;
+          <p>${res.suggestions.length ? 'No hay una coincidencia segura, pero alguien encontró mascotas parecidas. ¿Es alguna de estas?' : 'Todavía nadie la ha escaneado. Te enviaremos una notificación apenas alguien la encuentre.'}</p>
+        </div>
+        ${res.suggestions.length ? `
+          <div class="card">
+            <h2>¿Es ${esc(pet.name)}?</h2>
+            <ul class="pet-list suggestions">
+              ${res.suggestions.map((f) => `
+                <li><img src="${esc(f.photo)}" alt=""><span><strong>Encontrada ${timeAgo(f.createdAt)}</strong><small>Parecido ${Math.round(f.score * 100)}%</small></span>
+                <button class="btn small primary" data-claim="${esc(f.id)}">¡Es ${esc(pet.name)}!</button></li>`).join('')}
+            </ul>
+            <p class="muted small">Si es tu mascota, verás dónde está y el contacto de quien la encontró.</p>
+          </div>` : ''}
+        <a class="btn secondary" href="#/">Volver al inicio</a>`;
+      result.querySelectorAll('[data-claim]').forEach((b) =>
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          try {
+            await claimFound(pet, b.dataset.claim);
+            go(`#/encontrada/${b.dataset.claim}`);
+          } catch (err) {
+            toast(err.message);
+            b.disabled = false;
+          }
+        }),
+      );
     }),
   );
 }

@@ -59,7 +59,7 @@ const now = () => performance.now();
  * Monta el escáner dentro de `root`.
  * `onDone({ photo, biometric, looksLikePet, quality })` se llama al terminar.
  */
-export function mountScanner(root, { mode = 'identify', label = 'Escanear', onDone, onReset }) {
+export function mountScanner(root, { mode = 'identify', label = 'Escanear', doneText, onDone, onReset }) {
   warmUp();
   const enroll = mode === 'enroll';
   const steps = enroll ? ENROLL_STEPS : IDENTIFY_STEPS;
@@ -466,7 +466,7 @@ export function mountScanner(root, { mode = 'identify', label = 'Escanear', onDo
     const { scores, min } = consistency(embs);
     const level = !enroll ? null : Math.min(...scores) >= min + 0.1 && noses.length ? 'Excelente' : 'Buena';
     const noseNote = noses.length ? ' (cara y nariz)' : ' (sin nariz)';
-    status.textContent = enroll ? `¡Biometría registrada${noseNote}! Calidad: ${level}` : '¡Listo!';
+    status.textContent = doneText ? `✅ ${doneText}` : enroll ? `¡Biometría registrada${noseNote}! Calidad: ${level}` : '¡Listo!';
     onDone({
       photo: faces[0].photo,
       biometric: average(embs, noses.map((s) => s.emb)),

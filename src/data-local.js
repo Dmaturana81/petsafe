@@ -72,20 +72,25 @@ export async function reportLost(pet) {
   pet.lostAt = now();
   await db.put('pets', pet);
 
+  // También los avisos que se hicieron antes de que el dueño avisara.
   const found = (await db.all('found')).filter((f) => f.status === 'open' && (!f.petId || f.petId === pet.id));
   let best = null;
+  const similar = [];
   for (const f of found) {
     if (!sameSpecies(pet.species, f.species)) continue;
-    const { score, match } = compare(pet.biometric, f.biometric);
+    const { score, match, suggest } = compare(pet.biometric, f.biometric);
     if (match && (!best || score > best.score)) best = { report: f, score };
+    if (suggest && !f.petId) similar.push({ id: f.id, photo: f.photo, createdAt: f.createdAt, score });
   }
-  if (best) {
+  if (best && best.report.petId !== pet.id) {
     best.report.petId = pet.id;
     await db.put('found', best.report);
     await notifyOwnerOfMatch(pet, best.report);
-    return best.report;
   }
-  return null;
+  return {
+    match: best?.report || null,
+    suggestions: similar.filter((s) => s.id !== best?.report.id).sort((a, b) => b.score - a.score).slice(0, 3),
+  };
 }
 
 /** "Ya encontré mi mascota": quita el aviso y lo convierte en caso exitoso. */
@@ -134,9 +139,10 @@ export async function reportFound(finder, { photo, biometric, lat, lng, species 
   let best = null;
   let compared = 0;
   let ownMatch = null;
+  const similar = [];
   for (const pet of await db.all('pets')) {
     if (!sameSpecies(pet.species, species)) continue;
-    const { score, match } = compare(pet.biometric, biometric);
+    const { score, match, suggest } = compare(pet.biometric, biometric);
     // Una mascota propia no se "encuentra"; se informa para no confundir.
     if (pet.ownerId === finder.id) {
       if (match) ownMatch = pet.name;
@@ -145,6 +151,8 @@ export async function reportFound(finder, { photo, biometric, lat, lng, species 
     compared++;
     report.bestScore = Math.max(report.bestScore || 0, score);
     if (match && (!best || score > best.score)) best = { pet, score };
+    // Perdidas algo parecidas: quien la encontró puede decir "¡es esta!".
+    if (suggest && pet.status === 'lost') similar.push({ ...pick(pet), score });
   }
   if (best) report.petId = best.pet.id;
   await db.put('found', report);
@@ -155,7 +163,40 @@ export async function reportFound(finder, { photo, biometric, lat, lng, species 
     compared,
     ownMatch,
     care: best ? { diseases: best.pet.diseases, vaccines: best.pet.vaccines } : null,
+    suggestions: similar.filter((s) => s.id !== best?.pet.id).sort((a, b) => b.score - a.score).slice(0, 3),
   };
+}
+
+const pick = ({ id, name, photo, species, breed, lostAt }) => ({ id, name, photo, species, breed, lostAt });
+
+/** Quien encontró la mascota elige una sugerida: se avisa al dueño. Devuelve sus cuidados. */
+export async function confirmFound(finder, reportId, petId) {
+  const [report, pet] = await Promise.all([db.get('found', reportId), db.get('pets', petId)]);
+  if (!report || !pet || report.finderId !== finder.id || report.petId || pet.status !== 'lost') throw new Error('Aviso no disponible');
+  report.petId = pet.id;
+  await db.put('found', report);
+  await notify(pet.ownerId, {
+    type: 'match',
+    title: `¿Encontraron a ${pet.name}? 🐾`,
+    body: 'Alguien cree que la encontró. Toca para ver su foto, dónde está y contactarle.',
+    url: `#/encontrada/${report.id}`,
+  });
+  return { diseases: pet.diseases, vaccines: pet.vaccines };
+}
+
+/** El dueño reconoce a su mascota en un aviso sugerido. */
+export async function claimFound(pet, reportId) {
+  const report = await db.get('found', reportId);
+  if (!report || report.status !== 'open' || (report.petId && report.petId !== pet.id)) throw new Error('Aviso no disponible');
+  report.petId = pet.id;
+  await db.put('found', report);
+  if (report.finderId) {
+    await notify(report.finderId, {
+      title: 'El dueño reconoció a la mascota que encontraste 🐾',
+      body: `Se llama ${pet.name}. Te contactará pronto. ¡Gracias!`,
+    });
+  }
+  return true;
 }
 
 // Un gato nunca es la mascota de un aviso de perro. Si alguno no sabe o es
