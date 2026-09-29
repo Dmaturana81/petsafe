@@ -1,6 +1,6 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
-import { currentUser, myNotifications, deliverPending, enablePush } from './data.js';
+import { currentUser, myNotifications, deliverPending, enablePush, finishEmailLink } from './data.js';
 import { PAW, esc, isComplete } from './ui.js';
 
 import home from './views/home.js';
@@ -107,4 +107,14 @@ setInterval(() => document.hidden || updateBadge(), 30000);
 navigator.serviceWorker?.addEventListener('message', (e) => {
   if (e.data?.type === 'navigate') location.hash = e.data.url.replace(/^.*#/, '#');
 });
-render();
+// Vuelta desde el enlace del correo ("Entrar con mi correo").
+(async () => {
+  const error = await finishEmailLink().catch((err) => err.message);
+  if (error !== null) {
+    let to = '#/perfil';
+    try { to = localStorage.getItem('petsafe-after-login') || to; localStorage.removeItem('petsafe-after-login'); } catch { /* sin almacenamiento */ }
+    history.replaceState(null, '', location.pathname + to);
+    if (error) alert(`El enlace no sirvió (${error}). Pide uno nuevo desde la app.`);
+  }
+  render();
+})();

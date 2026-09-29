@@ -16,6 +16,7 @@ export const switchUser = call('switchUser');
 export const sendLoginCode = call('sendLoginCode');
 export const verifyLoginCode = call('verifyLoginCode');
 export const loginEmail = call('loginEmail');
+export const finishEmailLink = call('finishEmailLink');
 export const listUsers = call('listUsers');
 export const registerPet = call('registerPet');
 export const myPets = call('myPets');
