@@ -203,6 +203,11 @@ img { max-width: 100%; }
   transition: stroke-dashoffset 0.3s ease;
 }
 .scan-frame.done .scan-ring circle { stroke: var(--green); }
+/* Filmando: el anillo late mientras se completa, como Face ID. */
+.scan-frame.scanning .scan-ring circle { animation: scan-pulse 1.1s ease-in-out infinite; }
+@keyframes scan-pulse { 50% { stroke-width: 8; stroke: var(--coral); } }
+.shot.ok { animation: shot-in 0.35s ease-out; }
+@keyframes shot-in { from { transform: scale(0.6); } }
 .scan-hint {
   width: 100%; text-align: center; padding: 10px 14px;
   background: var(--cream); border: 2px solid var(--sun); border-radius: 16px;
