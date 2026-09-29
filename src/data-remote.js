@@ -62,23 +62,39 @@ export async function switchUser() {}
 // Con el mismo correo se es el mismo usuario en cualquier dispositivo (y el
 // administrador, si su correo está en admin_emails). Supabase envía un código.
 
-// 'link': el correo queda en el usuario de este dispositivo (conserva sus
-// datos y mascotas). 'login': el correo ya tiene cuenta y se entra a ella.
+// 'email_change': el correo queda en el usuario de este dispositivo (conserva
+// sus datos y mascotas). 'email': el correo ya tiene cuenta y se entra a ella.
+// El correo gratis de Supabase trae un enlace (no un código): al tocarlo se
+// vuelve a la app con la sesión iniciada (ver finishEmailLink).
 let codeType = 'email';
+const back = () => location.origin + location.pathname;
 
 export async function sendLoginCode(email) {
   const auth = await session();
   if (auth.is_anonymous) {
-    const { error } = await sb().auth.updateUser({ email });
+    const { error } = await sb().auth.updateUser({ email }, { emailRedirectTo: back() });
     if (!error) {
       codeType = 'email_change';
       return;
     }
     if (!/already|registered|exists/i.test(error.message)) throw new Error(error.message);
   }
-  const { error } = await sb().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+  const { error } = await sb().auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: back() } });
   if (error) throw new Error(error.message);
   codeType = 'email';
+}
+
+/**
+ * Al volver desde el enlace del correo, la dirección trae la sesión
+ * (#access_token=…). Supabase la toma al iniciar; aquí se espera y se limpia
+ * la dirección. Devuelve un mensaje de error si el enlace no sirvió.
+ */
+export async function finishEmailLink() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (!params.has('access_token') && !params.has('error_description')) return null;
+  await sb().auth.getSession();
+  sessionPromise = null;
+  return params.get('error_description') || '';
 }
 
 export async function verifyLoginCode(email, code) {
@@ -91,8 +107,15 @@ export async function verifyLoginCode(email, code) {
 
 /** Correo con el que se entró en este dispositivo, o '' si es una sesión anónima. */
 export async function loginEmail() {
-  const auth = await session();
-  return auth.is_anonymous ? '' : auth.email || '';
+  await session();
+  // Si el correo se confirmó desde otro navegador (por ejemplo, el enlace se
+  // abrió en Safari), se renueva la sesión para que ya lo incluya.
+  const { data } = await sb().auth.getUser();
+  const user = data.user;
+  if (!user || user.is_anonymous || !user.email) return '';
+  const { data: s } = await sb().auth.getSession();
+  if (s.session?.user?.is_anonymous) await sb().auth.refreshSession();
+  return user.email;
 }
 
 export async function listUsers() {

@@ -326,3 +326,4 @@ export const savePushKey = async () => false;
 export const sendLoginCode = async () => { throw new Error('Disponible solo con la app conectada a internet.'); };
 export const verifyLoginCode = sendLoginCode;
 export const loginEmail = async () => '';
+export const finishEmailLink = async () => null;

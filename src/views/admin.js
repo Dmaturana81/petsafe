@@ -46,7 +46,7 @@ function claim(el, { refresh }) {
   el.innerHTML = `
     <div class="card">
       <h1>Administrador 🔐</h1>
-      <p>Entra con tu correo de administrador. Te enviaremos un código para confirmar que es tuyo; así eres administrador en cualquier dispositivo.</p>
+      <p>Entra con tu correo de administrador. Te enviaremos un enlace para confirmar que es tuyo; así eres administrador en cualquier dispositivo.</p>
       <div id="email-login"></div>
     </div>
     <div class="card">
@@ -55,7 +55,7 @@ function claim(el, { refresh }) {
       <button class="btn secondary" id="claim">Soy el administrador</button>
     </div>`;
   mountEmailLogin(el.querySelector('#email-login'), {
-    button: 'Enviarme un código',
+    after: '#/admin',
     async onDone() {
       if (!(await isAdmin())) toast('Entraste, pero ese correo no es administrador.', 'bad');
       window.dispatchEvent(new Event('petsafe:changed'));
