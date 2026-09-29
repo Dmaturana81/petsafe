@@ -321,3 +321,8 @@ export const deleteContact = (id) => db.delete('contacts', id);
 export const enablePush = async () => false;
 export const pushConfigured = async () => false;
 export const savePushKey = async () => false;
+
+// Entrar con correo necesita el servidor (Supabase).
+export const sendLoginCode = async () => { throw new Error('Disponible solo con la app conectada a internet.'); };
+export const verifyLoginCode = sendLoginCode;
+export const loginEmail = async () => '';

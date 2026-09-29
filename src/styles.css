@@ -364,3 +364,8 @@ img { max-width: 100%; }
 .my-pets .pet-row > span { flex: 1; }
 .pet-edit { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .form[hidden] { display: none; }
+
+/* "Entrar con mi correo": el botón abre el formulario */
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+details[open] > summary { display: none; }
