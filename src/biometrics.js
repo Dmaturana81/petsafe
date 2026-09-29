@@ -27,6 +27,9 @@ export const SIZE = 224;
 // dino: valor inicial, a calibrar con pruebas reales. mobilenet: registros
 // antiguos. Mismos valores que face_threshold() en supabase/schema.sql.
 const THRESHOLDS = { dino: 0.78, mobilenet: 0.8, basic: 0.92 };
+// Algo menos parecido que el umbral: se muestra como "¿es esta?" para que una
+// persona decida. Igual que suggest_threshold() en supabase/schema.sql.
+const SUGGEST_MARGIN = 0.15;
 
 const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.0-dev.20260914-8d85527a0/dist/';
 const HEAD_MODEL = 'models/pet-head.onnx';
@@ -314,7 +317,7 @@ function compareFace(a, b) {
   const bs = [b[model].vector, ...(b[model].samples || [])];
   let score = 0;
   for (const x of as) for (const y of bs) if (x.length === y.length) score = Math.max(score, dot(x, y));
-  return { score, model, match: score >= THRESHOLDS[model] };
+  return { score, model, match: score >= THRESHOLDS[model], suggest: score >= THRESHOLDS[model] - SUGGEST_MARGIN };
 }
 
 /**

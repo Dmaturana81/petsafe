@@ -92,6 +92,10 @@ async function updateBadge(user) {
 window.addEventListener('hashchange', render);
 // Las pantallas avisan cuando cambian datos que afectan el contador de avisos.
 window.addEventListener('petsafe:changed', () => updateBadge());
+// Al volver a la app, y cada 30 s mientras está abierta, se buscan avisos
+// nuevos: en iPhone la conexión en vivo se corta en segundo plano.
+document.addEventListener('visibilitychange', () => document.hidden || updateBadge());
+setInterval(() => document.hidden || updateBadge(), 30000);
 // Al tocar una notificación con la app abierta, el Service Worker pide navegar.
 navigator.serviceWorker?.addEventListener('message', (e) => {
   if (e.data?.type === 'navigate') location.hash = e.data.url.replace(/^.*#/, '#');

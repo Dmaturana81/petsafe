@@ -84,7 +84,9 @@ export async function allPets() {
 }
 
 export async function savePet(pet) {
-  return run(sb().from('pets').update({ name: pet.name, diseases: pet.diseases, vaccines: pet.vaccines }).eq('id', pet.id));
+  return run(sb().from('pets').update({
+    name: pet.name, species: pet.species || '', breed: pet.breed || '', diseases: pet.diseases || '', vaccines: pet.vaccines || '',
+  }).eq('id', pet.id));
 }
 
 export async function removeMyPet(_user, petId) {
@@ -93,8 +95,13 @@ export async function removeMyPet(_user, petId) {
 }
 
 export async function reportLost(pet) {
-  const foundId = await run(sb().rpc('report_lost', { p_pet: pet.id }));
-  return foundId ? { id: foundId } : null;
+  const r = await run(sb().rpc('report_lost', { p_pet: pet.id }));
+  return { match: r.id ? { id: r.id } : null, suggestions: rows(r.suggestions) };
+}
+
+/** El dueño reconoce a su mascota en un aviso sugerido. */
+export async function claimFound(pet, reportId) {
+  return run(sb().rpc('claim_found', { p_found: reportId, p_pet: pet.id }));
 }
 
 export async function markRecovered(pet, story = '') {
@@ -112,7 +119,13 @@ export async function reportFound(_finder, { photo, biometric, lat, lng, species
     compared: r.compared,
     ownMatch: r.own_match,
     care: r.matched ? { diseases: r.diseases, vaccines: r.vaccines } : null,
+    suggestions: rows(r.suggestions),
   };
+}
+
+/** Quien encontró la mascota elige una sugerida: se avisa al dueño. Devuelve sus cuidados. */
+export async function confirmFound(_finder, reportId, petId) {
+  return run(sb().rpc('confirm_found', { p_found: reportId, p_pet: petId }));
 }
 
 export async function getFound(id) {

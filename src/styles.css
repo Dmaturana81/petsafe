@@ -347,3 +347,20 @@ img { max-width: 100%; }
 .contact-msg { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .contact-msg p { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .contact-msg.unread strong::before { content: '● '; color: var(--coral); }
+
+/* Confirmación después de escanear */
+.scan-ok {
+  margin: 0 0 12px; padding: 12px 14px; border-radius: 14px;
+  background: #eef7ef; border: 2px solid var(--green); font-weight: 800; text-align: center;
+}
+
+/* Perfil guardado: datos de solo lectura */
+.info { display: grid; gap: 2px; margin: 0 0 14px; }
+.info dt { font-size: 0.8rem; font-weight: 800; color: var(--muted); margin-top: 8px; }
+.info dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.info[hidden] { display: none; }
+.my-pets li { display: block; }
+.my-pets .pet-row { display: flex; align-items: center; gap: 12px; }
+.my-pets .pet-row > span { flex: 1; }
+.pet-edit { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.form[hidden] { display: none; }

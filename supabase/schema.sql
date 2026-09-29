@@ -170,6 +170,13 @@ language sql immutable as $$
   select score >= face_threshold(model);
 $$;
 
+-- Parecido suficiente para mostrarla como "¿es esta?" aunque no alcance para
+-- una coincidencia segura. Igual que SUGGEST_MARGIN en src/biometrics.js.
+create or replace function public.suggest_threshold(model text) returns real
+language sql immutable as $$
+  select (face_threshold(model) - 0.15)::real;
+$$;
+
 -- La cara decide; si las narices se parecen mucho, basta con una cara algo
 -- menos parecida (por ejemplo, encontrada de lado). Igual que compare() en la app.
 create or replace function public.is_pet_match(score real, model text, nose real) returns boolean
@@ -207,6 +214,33 @@ create or replace function public.same_species(a text, b text) returns boolean
 language sql immutable as $$
   select coalesce(a, '') in ('', 'otro') or coalesce(b, '') in ('', 'otro') or a = b;
 $$;
+
+-- Parecido de una mascota con cada aviso de "encontré" abierto (el inverso de
+-- pet_scores).
+drop function if exists public.found_scores(uuid);
+create function public.found_scores(p_pet uuid)
+returns table (found_id uuid, score real, model text, nose real)
+language sql stable security definer set search_path = public, extensions as $$
+  with ps as (select * from pet_samples where pet_id = p_pet),
+  s as (
+    select fs.found_id,
+      max(1 - (ps.dino <=> fs.dino)) filter (where fs.kind = 'face') as d,
+      max(1 - (ps.mobilenet <=> fs.mobilenet)) filter (where fs.kind = 'face') as m,
+      max(1 - (ps.basic <=> fs.basic)) filter (where fs.kind = 'face') as b,
+      max(1 - (ps.dino <=> fs.dino)) filter (where fs.kind = 'nose') as nd,
+      max(1 - (ps.mobilenet <=> fs.mobilenet)) filter (where fs.kind = 'nose') as nm
+    from found_samples fs
+    join found_reports fr on fr.id = fs.found_id and fr.status = 'open'
+      and same_species(fr.species, (select species from pets where id = p_pet))
+    join ps on ps.kind = fs.kind
+    group by fs.found_id
+  )
+  select found_id, coalesce(d, m, b)::real,
+    case when d is not null then 'dino' when m is not null then 'mobilenet' else 'basic' end,
+    (case when d is not null then nd when m is not null then nm end)::real
+  from s where coalesce(d, m, b) is not null;
+$$;
+revoke execute on function public.found_scores(uuid) from public, anon, authenticated;
 
 -- ---------- Acciones de la app ----------
 
@@ -273,47 +307,91 @@ begin
             'Toca para ver dónde está y contactar a quien la encontró.', '#/encontrada/' || r_id);
   end if;
 
+  -- Mascotas perdidas que se parecen algo, para que quien la encontró diga
+  -- "¡es esta!". Solo las perdidas: sus dueños las están buscando.
   return jsonb_build_object(
     'id', r_id, 'matched', b_id is not null, 'diseases', b_diseases, 'vaccines', b_vaccines,
-    'compared', n, 'own_match', own_name, 'best_score', top);
+    'compared', n, 'own_match', own_name, 'best_score', top,
+    'suggestions', coalesce((select jsonb_agg(to_jsonb(x) order by x.score desc) from (
+      select p.id, p.name, p.photo, p.species, p.breed, p.lost_at, s.score
+      from _scores s join pets p on p.id = s.pet_id
+      where p.owner_id <> auth.uid() and p.status = 'lost' and p.id is distinct from b_id
+        and s.score >= suggest_threshold(s.model)
+      order by s.score desc limit 3) x), '[]'::jsonb));
 end $$;
 
--- "Perdí mi mascota": activa el aviso y busca entre los avisos de "encontré".
-create or replace function public.report_lost(p_pet uuid) returns uuid
+-- Quien encontró una mascota elige una de las sugeridas: se liga el aviso y
+-- se avisa al dueño. Devuelve sus cuidados.
+create or replace function public.confirm_found(p_found uuid, p_pet uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare pet pets;
+begin
+  select * into pet from pets where id = p_pet and status = 'lost' and owner_id <> auth.uid();
+  if pet.id is null then raise exception 'Mascota no disponible'; end if;
+  update found_reports set pet_id = p_pet
+  where id = p_found and finder_id = auth.uid() and status = 'open' and pet_id is null;
+  if not found then raise exception 'Aviso no disponible'; end if;
+  insert into notifications (user_id, type, title, body, url)
+  values (pet.owner_id, 'match', '¿Encontraron a ' || pet.name || '? 🐾',
+          'Alguien cree que la encontró. Toca para ver su foto, dónde está y contactarle.', '#/encontrada/' || p_found);
+  return jsonb_build_object('diseases', pet.diseases, 'vaccines', pet.vaccines);
+end $$;
+
+-- "Perdí mi mascota": activa el aviso y busca entre los avisos de "encontré",
+-- también los que se hicieron antes de que el dueño avisara. Devuelve la
+-- coincidencia (id, o nulo) y los avisos parecidos para que el dueño revise.
+drop function if exists public.report_lost(uuid);
+create function public.report_lost(p_pet uuid) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
-declare f_id uuid; p_name text;
+declare f_id uuid; p_name text; sugg jsonb;
 begin
   update pets set status = 'lost', lost_at = now()
   where id = p_pet and owner_id = auth.uid() returning name into p_name;
   if p_name is null then raise exception 'Mascota no encontrada'; end if;
 
-  with ps as (select * from pet_samples where pet_id = p_pet),
-  s as (
-    select fs.found_id,
-      max(1 - (ps.dino <=> fs.dino)) filter (where fs.kind = 'face') as d,
-      max(1 - (ps.mobilenet <=> fs.mobilenet)) filter (where fs.kind = 'face') as m,
-      max(1 - (ps.basic <=> fs.basic)) filter (where fs.kind = 'face') as b,
-      max(1 - (ps.dino <=> fs.dino)) filter (where fs.kind = 'nose') as nd,
-      max(1 - (ps.mobilenet <=> fs.mobilenet)) filter (where fs.kind = 'nose') as nm
-    from found_samples fs
-    join found_reports fr on fr.id = fs.found_id and fr.status = 'open' and (fr.pet_id is null or fr.pet_id = p_pet)
-      and same_species(fr.species, (select species from pets where id = p_pet))
-    join ps on ps.kind = fs.kind
-    group by fs.found_id
-  )
-  select found_id into f_id from s
-  where is_pet_match(coalesce(d, m, b)::real,
-    case when d is not null then 'dino' when m is not null then 'mobilenet' else 'basic' end,
-    (case when d is not null then nd when m is not null then nm end)::real)
-  order by coalesce(d, m, b) desc limit 1;
+  create temp table if not exists _found (found_id uuid, score real, model text, nose real) on commit drop;
+  delete from _found;
+  insert into _found select s.* from found_scores(p_pet) s
+    join found_reports fr on fr.id = s.found_id
+    where fr.pet_id is null or fr.pet_id = p_pet;
 
-  if f_id is not null then
+  select found_id into f_id from _found
+  where is_pet_match(score, model, nose) order by score desc limit 1;
+
+  if f_id is not null and not exists (select 1 from found_reports where id = f_id and pet_id = p_pet) then
     update found_reports set pet_id = p_pet where id = f_id;
     insert into notifications (user_id, type, title, body, url)
     values (auth.uid(), 'match', '¡Encontraron a ' || p_name || '! 🐾',
             'Toca para ver dónde está y contactar a quien la encontró.', '#/encontrada/' || f_id);
   end if;
-  return f_id;
+
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.score desc), '[]'::jsonb) into sugg from (
+    select fr.id, fr.photo, fr.created_at, s.score
+    from _found s join found_reports fr on fr.id = s.found_id
+    where fr.pet_id is null and s.score >= suggest_threshold(s.model) and fr.id is distinct from f_id
+    order by s.score desc limit 3) x;
+
+  return jsonb_build_object('id', f_id, 'suggestions', sugg);
+end $$;
+
+-- El dueño reconoce a su mascota en un aviso sugerido: se liga el aviso (así
+-- ve el contacto y el mapa) y se avisa a quien la encontró.
+create or replace function public.claim_found(p_found uuid, p_pet uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare f found_reports; p_name text;
+begin
+  select name into p_name from pets where id = p_pet and owner_id = auth.uid();
+  if p_name is null then raise exception 'Mascota no encontrada'; end if;
+  update found_reports set pet_id = p_pet
+  where id = p_found and status = 'open' and (pet_id is null or pet_id = p_pet)
+  returning * into f;
+  if f.id is null then raise exception 'Aviso no disponible'; end if;
+  if f.finder_id is not null then
+    insert into notifications (user_id, type, title, body)
+    values (f.finder_id, 'info', 'El dueño reconoció a la mascota que encontraste 🐾',
+            'Se llama ' || p_name || '. Te contactará pronto. ¡Gracias!');
+  end if;
+  return true;
 end $$;
 
 -- "Ya encontré mi mascota": quita el aviso y publica el reencuentro.
