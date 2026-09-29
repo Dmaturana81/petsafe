@@ -14,8 +14,8 @@ export default defineConfig({
       injectManifest: { maximumFileSizeToCacheInBytes: 5 * 1024 * 1024 },
       includeAssets: ['icons/*'],
       manifest: {
-        name: 'Pet Safe',
-        short_name: 'Pet Safe',
+        name: 'Kiltrazo',
+        short_name: 'Kiltrazo',
         description: 'Registra a tu mascota con reconocimiento facial y encuéntrala si se pierde.',
         lang: 'es',
         start_url: './',

@@ -44,7 +44,7 @@ const app = document.getElementById('app');
 
 app.innerHTML = `
   <header class="topbar">
-    <a href="#/" class="brand"><span class="brand-paw">${PAW}</span> Pet Safe</a>
+    <a href="#/" class="brand"><span class="brand-paw">${PAW}</span> Kiltrazo</a>
     <a href="#/avisos" class="bell" aria-label="Avisos">🔔<span class="badge" hidden></span></a>
   </header>
   <main id="view"></main>

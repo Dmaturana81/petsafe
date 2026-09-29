@@ -1,4 +1,4 @@
--- Pet Safe: base de datos en Supabase.
+-- Kiltrazo: base de datos en Supabase.
 -- Pegar completo en Supabase → SQL Editor → "Run". Se puede volver a correr sin problemas.
 
 create extension if not exists vector with schema extensions;

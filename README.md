@@ -1,4 +1,4 @@
-# Pet Safe 🐾
+# Kiltrazo 🐾
 
 App (PWA) para registrar mascotas con reconocimiento facial y ayudar a que vuelvan a casa si se pierden.
 Registrar una mascota es gratis.

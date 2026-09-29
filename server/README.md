@@ -1,5 +1,5 @@
 ---
-title: Pet Safe
+title: Kiltrazo
 emoji: 🐾
 colorFrom: yellow
 colorTo: red
@@ -8,7 +8,7 @@ app_port: 7860
 license: agpl-3.0
 ---
 
-Servidor de reconocimiento de [Pet Safe](https://github.com/andresmaturana-ui/petsafe):
+Servidor de reconocimiento de [Kiltrazo](https://github.com/andresmaturana-ui/petsafe):
 detecta la cabeza de la mascota y calcula su huella con DINOv2, para que la app
 no tenga que descargar los modelos al celular.
 

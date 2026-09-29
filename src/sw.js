@@ -31,7 +31,7 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('push', (event) => {
   const data = event.data?.json() ?? {};
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Pet Safe', {
+    self.registration.showNotification(data.title || 'Kiltrazo', {
       body: data.body,
       icon: 'icons/icon-192.png',
       badge: 'icons/icon-192.png',
