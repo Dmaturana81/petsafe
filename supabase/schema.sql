@@ -114,9 +114,20 @@ create table if not exists public.comments (
 
 -- ---------- Funciones de apoyo ----------
 
+-- Correos de administrador: quien entra con uno de estos correos (verificado
+-- con el código que llega al correo) es administrador en cualquier dispositivo.
+create table if not exists public.admin_emails (
+  email text primary key check (email = lower(email))
+);
+alter table public.admin_emails enable row level security;
+
 create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from admins where user_id = auth.uid());
+  select exists (select 1 from admins where user_id = auth.uid())
+    or exists (
+      select 1 from admin_emails
+      where email = lower(auth.jwt() ->> 'email')
+        and not coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false));
 $$;
 
 -- El primer usuario que lo pida queda como administrador.

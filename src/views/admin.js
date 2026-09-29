@@ -4,6 +4,7 @@ import {
   CLOUD, isAdmin, claimAdmin, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
 } from '../data.js';
 import { generateVapidKeys } from '../notify.js';
+import { mountEmailLogin } from './login-email.js';
 import { esc, timeAgo, toast, changed } from '../ui.js';
 import { SPECIES, describe } from '../breeds.js';
 import { zip, fromDataUrl } from '../zip.js';
@@ -45,9 +46,22 @@ function claim(el, { refresh }) {
   el.innerHTML = `
     <div class="card">
       <h1>Administrador 🔐</h1>
-      <p>El primer usuario que toque este botón queda como administrador de Kiltrazo. Después, nadie más puede tomarlo desde la app.</p>
-      <button class="btn primary big" id="claim">Soy el administrador</button>
+      <p>Entra con tu correo de administrador. Te enviaremos un código para confirmar que es tuyo; así eres administrador en cualquier dispositivo.</p>
+      <div id="email-login"></div>
+    </div>
+    <div class="card">
+      <h2>¿Primera vez?</h2>
+      <p>Si aún no hay administrador, el primer usuario que toque este botón lo será.</p>
+      <button class="btn secondary" id="claim">Soy el administrador</button>
     </div>`;
+  mountEmailLogin(el.querySelector('#email-login'), {
+    button: 'Enviarme un código',
+    async onDone() {
+      if (!(await isAdmin())) toast('Entraste, pero ese correo no es administrador.', 'bad');
+      window.dispatchEvent(new Event('petsafe:changed'));
+      refresh();
+    },
+  });
   el.querySelector('#claim').addEventListener('click', async () => {
     if (await claimAdmin()) refresh();
     else toast('Ya hay un administrador. Pídele acceso.', 'bad');

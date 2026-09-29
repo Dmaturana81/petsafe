@@ -88,3 +88,13 @@ Los avisos se guardan en la tabla `notifications`. Cada aviso nuevo llama (con `
    `supabase/functions/send-push/index.ts` y publicar. En sus ajustes, desactivar **Verify JWT** (la base de
    datos la llama sin sesión; la función solo envía avisos que existen, una vez).
 5. En cada celular: abrir la app (en iPhone, instalada en la pantalla de inicio) y activar las notificaciones en Perfil.
+
+## Entrar con correo y administrador en cualquier dispositivo
+
+Cada dispositivo entra solo (usuario anónimo). Con **Perfil → Entrar con mi correo** la persona confirma su
+correo con un código y usa la misma cuenta en cualquier dispositivo. Quien entra con un correo de la tabla
+`admin_emails` es administrador. Configuración, una vez:
+
+1. Correr `supabase/schema.sql` y luego `insert into public.admin_emails values ('tu-correo@ejemplo.com');` (en minúsculas).
+2. En Supabase → **Authentication → Emails**, agregar `{{ .Token }}` al cuerpo de las plantillas
+   **Magic Link** y **Change Email Address** (así el correo trae el código).

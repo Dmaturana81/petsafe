@@ -58,6 +58,43 @@ export async function saveUser({ name, phone, firstName = '', lastName = '', ema
 
 export async function switchUser() {}
 
+// ---------- Entrar con correo ----------
+// Con el mismo correo se es el mismo usuario en cualquier dispositivo (y el
+// administrador, si su correo está en admin_emails). Supabase envía un código.
+
+// 'link': el correo queda en el usuario de este dispositivo (conserva sus
+// datos y mascotas). 'login': el correo ya tiene cuenta y se entra a ella.
+let codeType = 'email';
+
+export async function sendLoginCode(email) {
+  const auth = await session();
+  if (auth.is_anonymous) {
+    const { error } = await sb().auth.updateUser({ email });
+    if (!error) {
+      codeType = 'email_change';
+      return;
+    }
+    if (!/already|registered|exists/i.test(error.message)) throw new Error(error.message);
+  }
+  const { error } = await sb().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+  if (error) throw new Error(error.message);
+  codeType = 'email';
+}
+
+export async function verifyLoginCode(email, code) {
+  const { data, error } = await sb().auth.verifyOtp({ email, token: code, type: codeType });
+  if (error) throw new Error(error.message);
+  sessionPromise = Promise.resolve(data.user);
+  watching = null;
+  return data.user;
+}
+
+/** Correo con el que se entró en este dispositivo, o '' si es una sesión anónima. */
+export async function loginEmail() {
+  const auth = await session();
+  return auth.is_anonymous ? '' : auth.email || '';
+}
+
 export async function listUsers() {
   return rows(await run(sb().from('profiles').select('*').order('created_at')));
 }

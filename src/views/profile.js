@@ -1,17 +1,23 @@
-import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, enablePush, CLOUD } from '../data.js';
+import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, enablePush, loginEmail, CLOUD } from '../data.js';
+import { mountEmailLogin } from './login-email.js';
 import { askPermission, notificationsSupported } from '../notify.js';
 import { esc, toast, go, isComplete } from '../ui.js';
 import { SPECIES, breedOptions, describe } from '../breeds.js';
 
 export default async function profile(el, _params, { user, refresh }) {
   // Con Supabase cada celular es un usuario; cambiar de usuario es solo para pruebas locales.
-  const [users, pets] = await Promise.all([CLOUD ? [] : listUsers(), user ? myPets(user) : []]);
+  const [users, pets, email] = await Promise.all([CLOUD ? [] : listUsers(), user ? myPets(user) : [], CLOUD ? loginEmail() : '']);
   const others = users.filter((u) => u.id !== user?.id);
   const perm = notificationsSupported() ? Notification.permission : 'unsupported';
   // Perfil ya guardado: se muestran los datos y solo se editan al tocar "Editar".
   const saved = isComplete(user);
 
   el.innerHTML = `
+    ${CLOUD && !user ? `
+      <div class="card">
+        <h2>¿Ya usas Kiltrazo en otro dispositivo?</h2>
+        <details><summary class="btn ghost">Entrar con mi correo</summary><div id="email-login"></div></details>
+      </div>` : ''}
     <div class="card">
       <h1>${user ? 'Tu perfil' : 'Bienvenido a Kiltrazo 🐾'}</h1>
       ${!user ? '<p>Cuéntanos quién eres.</p>' : saved ? '' : '<p class="note">Completa tus datos para seguir usando Kiltrazo.</p>'}
@@ -86,10 +92,22 @@ export default async function profile(el, _params, { user, refresh }) {
         </form>
       </div>
 
+      ${CLOUD ? `
+        <div class="card">
+          <h2>Tu cuenta en otros dispositivos</h2>
+          ${email
+            ? `<p>✅ Entraste con <strong>${esc(email)}</strong>. En otro celular o computador, entra con el mismo correo y verás tus datos y mascotas.</p>`
+            : `<p>Confirma tu correo para usar tu cuenta en otro celular o computador. Tus datos y mascotas de este dispositivo se mantienen.</p>
+               <details><summary class="btn ghost">Entrar con mi correo</summary><div id="email-login"></div></details>`}
+        </div>` : ''}
+
       <div class="card">
         ${CLOUD ? '' : '<button class="btn ghost" id="newuser">Agregar otro usuario</button>'}
         <a class="btn ghost" href="#/admin">Administrador</a>
       </div>` : ''}`;
+
+  const loginBox = el.querySelector('#email-login');
+  if (loginBox) mountEmailLogin(loginBox, { onDone: () => go('#/') });
 
   el.querySelector('#profile').addEventListener('submit', async (e) => {
     e.preventDefault();
