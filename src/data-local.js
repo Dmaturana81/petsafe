@@ -299,6 +299,7 @@ export async function addSuccess(s) {
 
 export const isAdmin = async () => false;
 export const claimAdmin = async () => false;
+export const adminExists = async () => true;
 
 // ---------- Mensajes de usuarios al administrador ----------
 
