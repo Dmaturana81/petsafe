@@ -27,12 +27,13 @@ registerRoute(
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
-// Listo para Web Push desde un servidor: { title, body, url }.
+// Web Push de la función send-push: { id, title, body, url }.
 self.addEventListener('push', (event) => {
   const data = event.data?.json() ?? {};
   event.waitUntil(
     self.registration.showNotification(data.title || 'Kiltrazo', {
       body: data.body,
+      tag: data.id, // la app usa el mismo tag: no se repite al abrirla
       icon: 'icons/icon-192.png',
       badge: 'icons/icon-192.png',
       data: { url: data.url || '#/avisos' },

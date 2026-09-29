@@ -445,6 +445,48 @@ drop trigger if exists contacts_notify on public.contacts;
 create trigger contacts_notify after insert on public.contacts
   for each row execute function public.notify_admins_contact();
 
+-- ---------- Notificaciones push (con la app cerrada) ----------
+-- Cada celular que activa las notificaciones guarda aquí su suscripción. La
+-- función send-push (supabase/functions/send-push) las usa para avisar.
+
+create table if not exists public.push_subscriptions (
+  endpoint text primary key,
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subscriptions_user on public.push_subscriptions (user_id);
+
+-- Ajustes públicos de la app (hoy, la clave pública de las notificaciones).
+create table if not exists public.app_settings (
+  key text primary key,
+  value text not null
+);
+
+-- Cada aviso nuevo le pide a send-push que lo envíe. Si la función aún no
+-- está publicada no pasa nada: el aviso se muestra al abrir la app.
+create or replace function public.push_notification() returns trigger
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform net.http_post(
+    url := 'https://zzudsvwqskypviqruevb.supabase.co/functions/v1/send-push',
+    body := jsonb_build_object('id', new.id),
+    headers := '{"Content-Type": "application/json"}'::jsonb);
+  return new;
+exception when others then
+  return new;
+end $$;
+
+do $$ begin
+  if exists (select 1 from pg_available_extensions where name = 'pg_net') then
+    create extension if not exists pg_net;
+    drop trigger if exists notifications_push on public.notifications;
+    create trigger notifications_push after insert on public.notifications
+      for each row execute function public.push_notification();
+  end if;
+end $$;
+
 -- ---------- Seguridad (RLS) ----------
 
 alter table public.profiles enable row level security;
@@ -512,6 +554,25 @@ drop policy if exists "admin marca mensajes" on public.contacts;
 create policy "admin marca mensajes" on public.contacts for update using (is_admin());
 drop policy if exists "admin borra mensajes" on public.contacts;
 create policy "admin borra mensajes" on public.contacts for delete using (is_admin());
+
+alter table public.push_subscriptions enable row level security;
+alter table public.app_settings enable row level security;
+
+drop policy if exists "mis suscripciones" on public.push_subscriptions;
+create policy "mis suscripciones" on public.push_subscriptions for select using (user_id = auth.uid());
+drop policy if exists "suscribirme" on public.push_subscriptions;
+create policy "suscribirme" on public.push_subscriptions for insert with check (user_id = auth.uid());
+drop policy if exists "actualizar mi suscripción" on public.push_subscriptions;
+create policy "actualizar mi suscripción" on public.push_subscriptions for update using (user_id = auth.uid());
+drop policy if exists "borrar mi suscripción" on public.push_subscriptions;
+create policy "borrar mi suscripción" on public.push_subscriptions for delete using (user_id = auth.uid());
+
+drop policy if exists "ajustes públicos" on public.app_settings;
+create policy "ajustes públicos" on public.app_settings for select using (true);
+drop policy if exists "admin guarda ajustes" on public.app_settings;
+create policy "admin guarda ajustes" on public.app_settings for insert with check (is_admin());
+drop policy if exists "admin cambia ajustes" on public.app_settings;
+create policy "admin cambia ajustes" on public.app_settings for update using (is_admin());
 
 -- Avisos en tiempo real mientras la app está abierta.
 do $$ begin

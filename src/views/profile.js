@@ -1,4 +1,4 @@
-import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, CLOUD } from '../data.js';
+import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, enablePush, CLOUD } from '../data.js';
 import { askPermission, notificationsSupported } from '../notify.js';
 import { esc, toast, go, isComplete } from '../ui.js';
 import { SPECIES, breedOptions, describe } from '../breeds.js';
@@ -96,7 +96,7 @@ export default async function profile(el, _params, { user, refresh }) {
     const f = new FormData(e.target);
     const data = Object.fromEntries(['firstName', 'lastName', 'phone', 'email', 'address'].map((k) => [k, f.get(k).trim()]));
     await saveUser({ id: user?.id, ...data, name: `${data.firstName} ${data.lastName}` });
-    if (!user) await askPermission();
+    if (!user && (await askPermission()) === 'granted') await enablePush().catch(() => {});
     toast('¡Listo!', 'ok');
     isComplete(user) ? refresh() : go('#/');
   });
@@ -171,7 +171,7 @@ export default async function profile(el, _params, { user, refresh }) {
   });
 
   el.querySelector('#perm')?.addEventListener('click', async () => {
-    await askPermission();
+    if ((await askPermission()) === 'granted') await enablePush().catch(() => {});
     refresh();
   });
 

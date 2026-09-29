@@ -316,3 +316,8 @@ export async function markContactRead(id) {
 }
 
 export const deleteContact = (id) => db.delete('contacts', id);
+
+// Web Push necesita el servidor (Supabase): sin él, los avisos se ven al abrir la app.
+export const enablePush = async () => false;
+export const pushConfigured = async () => false;
+export const savePushKey = async () => false;

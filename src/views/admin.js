@@ -1,8 +1,9 @@
 import {
   allPets, savePet, allFound, saveFound, deleteFound, listUsers, notify, notifyAll,
   latestSuccesses, deleteSuccess, commentsFor, deleteComment, addSuccess, markRecovered,
-  CLOUD, isAdmin, claimAdmin, listContacts, markContactRead, deleteContact,
+  CLOUD, isAdmin, claimAdmin, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
 } from '../data.js';
+import { generateVapidKeys } from '../notify.js';
 import { esc, timeAgo, toast, changed } from '../ui.js';
 import { SPECIES, describe } from '../breeds.js';
 import { zip, fromDataUrl } from '../zip.js';
@@ -322,8 +323,17 @@ function dogAvatar(fur) {
 // Descarga de usuarios y mascotas para el administrador. Estos datos no se
 // muestran en ninguna otra parte de la app.
 async function datos(panel, { refresh }) {
-  const [users, pets] = await Promise.all([listUsers(), allPets()]);
+  const [users, pets, push] = await Promise.all([listUsers(), allPets(), pushConfigured()]);
   panel.innerHTML = `
+    ${CLOUD ? `
+      <div class="card" id="push">
+        <h2>Notificaciones push</h2>
+        <p>${push
+          ? '✅ Claves listas. Si ya publicaste la función send-push con sus secretos, los avisos llegan aunque la app esté cerrada.'
+          : 'Para que los avisos lleguen con la app cerrada, genera las claves y cópialas en Supabase (Edge Functions → Secrets).'}</p>
+        <button class="btn ${push ? 'ghost' : 'primary'}" id="vapid">${push ? 'Generar claves nuevas' : 'Generar claves'}</button>
+        <div id="keys"></div>
+      </div>` : ''}
     <div class="card">
       <h2>Usuarios y mascotas</h2>
       <p>${users.length} usuario${users.length === 1 ? '' : 's'} · ${pets.length} mascota${pets.length === 1 ? '' : 's'} registrada${pets.length === 1 ? '' : 's'}</p>
@@ -336,6 +346,25 @@ async function datos(panel, { refresh }) {
       <input class="search" type="search" id="q" placeholder="Nombre, teléfono, correo o dirección" autocomplete="off">
       <ul class="user-results" id="results"></ul>
     </div>`;
+  panel.querySelector('#vapid')?.addEventListener('click', async (e) => {
+    if (push && !confirm('Con claves nuevas, cada celular debe abrir la app otra vez para volver a recibir notificaciones, y debes actualizar los secretos en Supabase. ¿Seguir?')) return;
+    e.target.disabled = true;
+    const { publicKey, privateKey } = await generateVapidKeys();
+    await savePushKey(publicKey);
+    enablePush().catch(() => {});
+    const box = (name, value) => `
+      <label>${name}<textarea readonly rows="3" data-copy>${esc(value)}</textarea></label>`;
+    panel.querySelector('#keys').innerHTML = `
+      <div class="form">
+        <p class="note">Copia estos 3 secretos en Supabase → Edge Functions → Secrets. La clave privada se muestra solo ahora y no se la des a nadie.</p>
+        ${box('VAPID_PUBLIC_KEY', publicKey)}
+        ${box('VAPID_PRIVATE_KEY', privateKey)}
+        ${box('VAPID_SUBJECT', 'mailto:tu-correo@ejemplo.com')}
+      </div>`;
+    panel.querySelectorAll('[data-copy]').forEach((t) => t.addEventListener('focus', () => t.select()));
+    toast('Claves generadas', 'ok');
+  });
+
   userSearch(panel.querySelector('#q'), panel.querySelector('#results'), users, (u) => {
     const own = pets.filter((p) => p.ownerId === u.id);
     return `<li><span><strong>${esc(u.firstName ? `${u.firstName} ${u.lastName}` : u.name)}</strong>
