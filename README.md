@@ -8,7 +8,7 @@ Registrar una mascota es gratis.
 | Pantalla | Qué hace |
 | --- | --- |
 | **Inicio** | Botones grandes *Perdí mi mascota*, *Encontré una mascota* y *Ya encontré mi mascota*, acceso a *Registrar mascota* y los últimos 6 reencuentros con foto y comentarios. |
-| **1 · Registrar mascota** | Registro guiado de 5 capturas de la cara en distintos ángulos más una de la nariz (cámara o fotos de la galería, con el mismo control de calidad) y luego pide nombre de la mascota, nombre del dueño, enfermedades y vacunas. |
+| **1 · Registrar mascota** | Escaneo en video, como Face ID: mientras se filma, la app guarda sola 5 capturas nítidas de la cara en ángulos distintos y luego una de la nariz (también acepta fotos de la galería, con el mismo control de calidad) y luego pide nombre de la mascota, nombre del dueño, enfermedades y vacunas. |
 | **Perdí mi mascota** | Activa el aviso y busca entre los avisos de "encontré". Si hay coincidencia, notifica al dueño. |
 | **2 · Mascota encontrada** | Solo para el dueño: llamar o escribir por WhatsApp a quien la encontró, mapa con la ubicación y botones *cómo llegar* en auto, bicicleta, a pie o transporte. |
 | **3 · Encontré una mascota** | Escanea la cara. Si está registrada se avisa al dueño y al que la encontró **solo** se le muestran vacunas y enfermedades (ningún dato del dueño, para evitar pedidos de recompensa). |

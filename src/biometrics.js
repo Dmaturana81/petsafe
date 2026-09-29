@@ -195,7 +195,7 @@ async function locateHead(canvas) {
   if (best < 0) return false;
   const bw = d[2 * count + best] / k, bh = d[3 * count + best] / k;
   const cx = (d[best] - dx) / k, cy = (d[count + best] - dy) / k;
-  return { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh, head: true };
+  return { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh, head: true, score };
 }
 
 /**
@@ -349,6 +349,15 @@ export function consistency(embeddings) {
     return others.reduce((acc, o) => acc + dot(e[model], o[model]), 0) / others.length;
   });
   return { scores, min: CONSISTENCY_MIN[model] };
+}
+
+/**
+ * Parecido entre dos capturas (0 a 1) con el mejor descriptor que tengan las
+ * dos. Sirve para saber si una captura nueva muestra otro ángulo.
+ */
+export function similarity(a, b) {
+  const model = commonModel([a, b]);
+  return model ? dot(a[model], b[model]) : 0;
 }
 
 // Solo detecta errores gruesos (otro animal, foto equivocada).
