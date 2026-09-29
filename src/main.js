@@ -1,6 +1,6 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
-import { currentUser, myNotifications, deliverPending } from './data.js';
+import { currentUser, myNotifications, deliverPending, enablePush } from './data.js';
 import { PAW, esc, isComplete } from './ui.js';
 
 import home from './views/home.js';
@@ -57,8 +57,15 @@ app.innerHTML = `
 
 const viewEl = document.getElementById('view');
 
+let pushTried = false;
+
 async function render() {
   const user = await currentUser();
+  // Una vez por visita: renueva la suscripción push de este celular.
+  if (user && !pushTried) {
+    pushTried = true;
+    enablePush().catch((err) => console.warn('Push no disponible', err));
+  }
   const hash = location.hash || '#/';
   let { view, params } = resolve(hash);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.

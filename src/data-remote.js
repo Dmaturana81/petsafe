@@ -5,7 +5,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { pushLocal } from './notify.js';
+import { pushLocal, subscribePush } from './notify.js';
 
 let client;
 function sb() {
@@ -170,6 +170,31 @@ export async function deliverPending(user) {
 export async function markRead(n) {
   n.read = true;
   return run(sb().from('notifications').update({ read: true }).eq('id', n.id));
+}
+
+// ---------- Notificaciones push (con la app cerrada) ----------
+
+async function pushKey() {
+  const row = await run(sb().from('app_settings').select('value').eq('key', 'vapid_public_key').maybeSingle());
+  return row?.value || '';
+}
+
+/** Guarda la suscripción push de este celular. Devuelve true si quedó activa. */
+export async function enablePush() {
+  const sub = await subscribePush(await pushKey());
+  if (!sub) return false;
+  const auth = await session();
+  await run(sb().from('push_subscriptions').upsert({ ...sub, user_id: auth.id }));
+  return true;
+}
+
+export async function pushConfigured() {
+  return Boolean(await pushKey());
+}
+
+/** El administrador publica la clave pública (la privada va solo en Supabase). */
+export async function savePushKey(publicKey) {
+  return run(sb().from('app_settings').upsert({ key: 'vapid_public_key', value: publicKey }));
 }
 
 // Mientras la app está abierta, los avisos nuevos llegan al instante.

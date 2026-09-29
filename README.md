@@ -74,3 +74,17 @@ al dueño de la mascota que coincidió y al administrador.
 
 AGPL-3.0 (ver `LICENSE`). El detector de cabezas se entrena con Ultralytics YOLO, que usa esta misma licencia:
 quien publique una versión modificada de la app debe compartir su código.
+
+## Notificaciones push (con la app cerrada)
+
+Los avisos se guardan en la tabla `notifications`. Cada aviso nuevo llama (con `pg_net`) a la función
+`send-push` de Supabase, que lo envía por Web Push a los celulares del usuario. Pasos, una sola vez:
+
+1. Correr `supabase/schema.sql` en el SQL Editor.
+2. En la app: **Administrador → Datos → Notificaciones push → Generar claves**.
+3. En Supabase → **Edge Functions → Secrets**, crear `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `VAPID_SUBJECT`
+   (`mailto:` + un correo) con los valores que muestra la app.
+4. En Supabase → **Edge Functions → Deploy a new function → Via Editor**, nombre `send-push`, pegar
+   `supabase/functions/send-push/index.ts` y publicar. En sus ajustes, desactivar **Verify JWT** (la base de
+   datos la llama sin sesión; la función solo envía avisos que existen, una vez).
+5. En cada celular: abrir la app (en iPhone, instalada en la pantalla de inicio) y activar las notificaciones en Perfil.
