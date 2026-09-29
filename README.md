@@ -96,5 +96,7 @@ correo con un código y usa la misma cuenta en cualquier dispositivo. Quien entr
 `admin_emails` es administrador. Configuración, una vez:
 
 1. Correr `supabase/schema.sql` y luego `insert into public.admin_emails values ('tu-correo@ejemplo.com');` (en minúsculas).
-2. En Supabase → **Authentication → Emails**, agregar `{{ .Token }}` al cuerpo de las plantillas
-   **Magic Link** y **Change Email Address** (así el correo trae el código).
+2. En Supabase → **Authentication → URL Configuration**: Site URL `https://andresmaturana-ui.github.io/petsafe/`
+   y en Redirect URLs agregar `https://andresmaturana-ui.github.io/petsafe/**`. El correo gratis de Supabase
+   trae un enlace; al tocarlo se vuelve a la app con la sesión iniciada. (Con un servidor de correo propio se
+   puede agregar `{{ .Token }}` a las plantillas y la app también acepta el código.)
