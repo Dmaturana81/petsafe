@@ -44,7 +44,7 @@ function claim(el, { refresh }) {
   el.innerHTML = `
     <div class="card">
       <h1>Administrador 🔐</h1>
-      <p>El primer usuario que toque este botón queda como administrador de Pet Safe. Después, nadie más puede tomarlo desde la app.</p>
+      <p>El primer usuario que toque este botón queda como administrador de Kiltrazo. Después, nadie más puede tomarlo desde la app.</p>
       <button class="btn primary big" id="claim">Soy el administrador</button>
     </div>`;
   el.querySelector('#claim').addEventListener('click', async () => {
@@ -371,7 +371,7 @@ async function datos(panel, { refresh }) {
     for (const u of users) if (!pets.some((p) => p.ownerId === u.id)) rows.push([...person(u), '', '', '', '', '', '', '', '', '']);
     return toCsv([header, ...rows]);
   };
-  const name = `petsafe-datos-${day(new Date().toISOString())}`;
+  const name = `kiltrazo-datos-${day(new Date().toISOString())}`;
   panel.querySelector('#csv').addEventListener('click', () => {
     download(`${name}.csv`, new Blob([table()], { type: 'text/csv;charset=utf-8' }));
   });

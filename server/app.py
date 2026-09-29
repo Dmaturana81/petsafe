@@ -1,4 +1,4 @@
-# Servidor de reconocimiento de Pet Safe (Hugging Face Space, gratis).
+# Servidor de reconocimiento de Kiltrazo (Hugging Face Space, gratis).
 #
 # Hace lo mismo que src/biometrics.js en el celular, para que la app no tenga
 # que descargar los modelos:
@@ -21,7 +21,7 @@ from PIL import Image, ImageOps
 MAX_BYTES = 3 * 1024 * 1024
 HEAD = {"size": 320, "threshold": 0.4}
 
-app = FastAPI(title="Pet Safe")
+app = FastAPI(title="Kiltrazo")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("ALLOWED_ORIGINS", "https://andresmaturana-ui.github.io").split(","),
