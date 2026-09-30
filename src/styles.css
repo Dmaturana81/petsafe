@@ -52,7 +52,7 @@ img { max-width: 100%; }
   backdrop-filter: blur(8px);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.3rem; color: var(--text); text-decoration: none; }
-.brand-logo { height: 34px; width: auto; display: block; }
+.brand-logo { height: 46px; width: auto; display: block; }
 .welcome-logo { display: block; width: min(150px, 42%); height: auto; margin: 0 auto 4px; }
 .bell { position: relative; font-size: 1.4rem; text-decoration: none; padding: 6px; }
 .badge {
