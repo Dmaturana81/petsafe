@@ -434,3 +434,7 @@ details[open] > summary { display: none; }
 .tip svg { width: 100%; height: auto; background: #fff; border-radius: 12px; }
 .tip.avoid { background: #fde6df; }
 .tip.avoid h3 span { background: var(--coral-dark); }
+
+/* Galería: opción secundaria, para cuando la mascota no está presente */
+.gallery-link { display: grid; gap: 2px; text-align: center; cursor: pointer; font-size: 0.95rem; }
+.gallery-link[hidden] { display: none; }

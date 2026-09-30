@@ -91,12 +91,13 @@ export function mountScanner(root, { mode = 'identify', label = 'Escanear', done
         <button class="btn primary big" data-act="scan" disabled>${esc(label)}</button>
         <button class="btn ghost" data-act="torch" hidden>🔦 Encender linterna</button>
         <button class="btn ghost" data-act="skip" hidden>Omitir la nariz</button>
-        <label class="btn ghost">
-          Mejor usar fotos de la galería
-          <input type="file" accept="image/*" multiple hidden>
-        </label>
       </div>
       <p class="muted small center">Presiona el botón y filma su cara moviendo el celular despacio, siguiendo las indicaciones. La app guarda sola las mejores capturas${enroll ? ', desde distintos ángulos, así la reconoce aunque la encuentren de lado' : ''}. Al final, la nariz de cerca: sus pliegues son únicos, como una huella digital.</p>
+      <label class="gallery-link">
+        <span class="link">📷 Subir fotos de la galería</span>
+        <small class="muted">Si no la tienes contigo, sube 3 a 5 fotos claras de su cara.</small>
+        <input type="file" accept="image/*" multiple hidden>
+      </label>
     </div>`;
 
   const $ = (s) => root.querySelector(s);
