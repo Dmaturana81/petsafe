@@ -19,7 +19,7 @@ export default async function profile(el, _params, { user, refresh }) {
         <details><summary class="btn ghost">Entrar con mi correo y clave</summary><div id="email-login"></div></details>
       </div>` : ''}
     <div class="card">
-      <h1>${user ? 'Tu perfil' : 'Bienvenido a Kiltrazo 🐾'}</h1>
+      ${user ? '<h1>Tu perfil</h1>' : '<img src="brand/kiltrazo-completo.svg" alt="Kiltrazo" class="welcome-logo"><h1>¡Bienvenido! 🐾</h1>'}
       ${!user ? '<p>Cuéntanos quién eres.</p>' : saved ? '' : '<p class="note">Completa tus datos para seguir usando Kiltrazo.</p>'}
       ${saved ? `
         <dl class="info" id="profile-view">

@@ -52,8 +52,8 @@ img { max-width: 100%; }
   backdrop-filter: blur(8px);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.3rem; color: var(--text); text-decoration: none; }
-.brand-paw { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 12px; background: var(--coral); color: #fff; }
-.brand-paw svg { width: 22px; height: 22px; }
+.brand-logo { height: 34px; width: auto; display: block; }
+.welcome-logo { display: block; width: min(150px, 42%); height: auto; margin: 0 auto 4px; }
 .bell { position: relative; font-size: 1.4rem; text-decoration: none; padding: 6px; }
 .badge {
   position: absolute; top: 0; right: -2px; min-width: 20px; height: 20px; padding: 0 5px;
