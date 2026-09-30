@@ -505,6 +505,53 @@ do $$ begin
   end if;
 end $$;
 
+-- ---------- Pasar los datos al entrar con la cuenta ----------
+-- Cada dispositivo empieza como usuario anónimo. Si ahí se registraron
+-- mascotas y después se entra con correo y clave, la app pide un pase como
+-- anónimo (start_transfer) y, ya dentro de la cuenta, lo usa
+-- (finish_transfer) para que las mascotas y avisos pasen a la cuenta. El pase
+-- solo lo puede pedir el propio usuario anónimo y vence en 15 minutos.
+create table if not exists public.user_transfers (
+  token uuid primary key default gen_random_uuid(),
+  from_user uuid not null references auth.users on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.user_transfers enable row level security;
+
+create or replace function public.start_transfer() returns uuid
+language plpgsql security definer set search_path = public as $$
+declare t uuid;
+begin
+  if auth.uid() is null then return null; end if;
+  delete from user_transfers where from_user = auth.uid() or created_at < now() - interval '1 day';
+  insert into user_transfers (from_user) values (auth.uid()) returning token into t;
+  return t;
+end $$;
+
+create or replace function public.finish_transfer(p_token uuid) returns integer
+language plpgsql security definer set search_path = public as $$
+declare f uuid; n integer;
+begin
+  delete from user_transfers where token = p_token and created_at > now() - interval '15 minutes'
+  returning from_user into f;
+  if f is null or auth.uid() is null or f = auth.uid() then return 0; end if;
+  -- Solo desde un usuario anónimo: una cuenta con correo nunca se vacía así.
+  if not exists (select 1 from auth.users where id = f and is_anonymous) then return 0; end if;
+
+  update pets set owner_id = auth.uid() where owner_id = f;
+  get diagnostics n = row_count;
+  update found_reports set finder_id = auth.uid() where finder_id = f;
+  update notifications set user_id = auth.uid() where user_id = f;
+  update comments set user_id = auth.uid() where user_id = f;
+  update contacts set user_id = auth.uid() where user_id = f;
+  update push_subscriptions set user_id = auth.uid() where user_id = f;
+  -- El perfil del dispositivo solo pasa si la cuenta aún no tiene uno.
+  if not exists (select 1 from profiles where id = auth.uid()) then
+    update profiles set id = auth.uid() where id = f;
+  end if;
+  return n;
+end $$;
+
 -- ---------- Seguridad (RLS) ----------
 
 alter table public.profiles enable row level security;

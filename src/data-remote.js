@@ -90,11 +90,19 @@ export async function createAccount(email, password) {
   return true;
 }
 
+// Al entrar a la cuenta, lo que se hizo en este dispositivo como anónimo
+// (mascotas, avisos) pasa a la cuenta. Ver start_transfer en schema.sql.
 export async function signIn(email, password) {
+  const before = await session().catch(() => null);
+  const pass = before?.is_anonymous ? (await sb().rpc('start_transfer')).data : null;
   const { data, error } = await sb().auth.signInWithPassword({ email, password });
   if (error) throw new Error(friendly(error));
   sessionPromise = Promise.resolve(data.user);
   watching = null;
+  if (pass) {
+    const { error: e } = await sb().rpc('finish_transfer', { p_token: pass });
+    if (e) console.warn('No se pasaron los datos del dispositivo', e.message);
+  }
 }
 
 /** Envía el correo para crear una clave nueva (vuelve a la app, ver finishEmailLink). */
