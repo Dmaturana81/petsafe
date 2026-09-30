@@ -298,7 +298,7 @@ async function usuarios(panel, { refresh }) {
             <span class="count">🐾 ${own.length}</span>
           </button>
           <div class="user-detail" hidden>
-            <p class="small">📞 ${esc(u.phone || 'No informó')}<br>✉️ ${esc(u.email || 'No informó')}<br>🏠 ${esc(u.address || 'No informó')}<br>Usuario desde ${esc(day(u.createdAt) || '—')}</p>
+            <p class="small">📞 ${esc(u.phone || 'No informó')}<br>✉️ ${esc(u.email || 'No informó')}<br>🏠 ${esc(u.address || 'No informó')}<br>Usuario desde ${esc(day(u.createdAt) || '—')}<br>${u.promos ? `✅ Acepta ofertas${u.promosAt ? ` desde ${esc(day(u.promosAt))}` : ''}` : '🚫 No acepta ofertas'}</p>
             ${own.length ? `<ul class="pet-list">${own.map(petItem).join('')}</ul>` : '<p class="muted">Sin mascotas registradas.</p>'}
             <button type="button" class="btn small" data-msg="${esc(u.id)}">Enviar mensaje</button>
           </div>
@@ -470,14 +470,14 @@ async function datos(panel, { refresh }) {
   }
   const table = () => {
     const header = [
-      'Nombres', 'Apellidos', 'Teléfono', 'Correo', 'Dirección', 'Usuario desde',
+      'Nombres', 'Apellidos', 'Teléfono', 'Correo', 'Dirección', 'Usuario desde', 'Acepta ofertas', 'Aceptó ofertas el',
       'Mascota', 'Tipo', 'Raza', 'Nombre del dueño (registro)', 'Estado', 'Enfermedades', 'Vacunas', 'Mascota registrada', 'Foto',
     ];
     // Celdas vacías con texto, para distinguir "no lo llenó" de un error.
     const or = (v, empty = 'No informó') => (v && String(v).trim()) || empty;
     const person = (u) => (u
-      ? [u.firstName || u.name, u.lastName, u.phone, u.email, u.address, day(u.createdAt)]
-      : ['Sin perfil', '', '', '', '', '']);
+      ? [u.firstName || u.name, u.lastName, u.phone, u.email, u.address, day(u.createdAt), u.promos ? 'Sí' : 'No', u.promos ? day(u.promosAt) || '' : '']
+      : ['Sin perfil', '', '', '', '', '', '', '']);
     const rows = pets.map((p) => [
       ...person(users.find((u) => u.id === p.ownerId)),
       or(p.name, 'Sin nombre'), SPECIES[p.species] || 'No informó', or(p.breed), or(p.ownerName), p.status === 'lost' ? 'Perdida' : 'En casa',

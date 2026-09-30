@@ -18,6 +18,22 @@ alter table public.profiles add column if not exists last_name text not null def
 alter table public.profiles add column if not exists email text not null default '';
 alter table public.profiles add column if not exists address text not null default '';
 
+-- Promociones: solo si la persona marca la casilla (Ley 21.719: consentimiento
+-- expreso, informado y específico). promos_at y promos_version los pone el
+-- trigger de abajo; cada cambio queda en consent_log como respaldo.
+alter table public.profiles add column if not exists promos boolean not null default false;
+alter table public.profiles add column if not exists promos_at timestamptz;
+alter table public.profiles add column if not exists promos_version text not null default '';
+
+create table if not exists public.consent_log (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users on delete cascade,
+  kind text not null,
+  granted boolean not null,
+  version text not null default '',
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.admins (
   user_id uuid primary key references auth.users on delete cascade
 );
@@ -643,3 +659,32 @@ create policy "admin cambia ajustes" on public.app_settings for update using (is
 do $$ begin
   alter publication supabase_realtime add table public.notifications;
 exception when duplicate_object then null; end $$;
+
+-- Registro de consentimientos: se escribe solo desde el trigger, al crear el
+-- perfil con la casilla marcada o al cambiarla después.
+create or replace function public.log_promos() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  -- Un upsert sobre un perfil que ya existe pasa por aquí antes del UPDATE:
+  -- se deja que el UPDATE registre el cambio, para no anotarlo dos veces.
+  if tg_op = 'INSERT' and (not new.promos or exists (select 1 from profiles where id = new.id)) then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and new.promos is not distinct from old.promos then
+    new.promos_at := old.promos_at;
+    new.promos_version := old.promos_version;
+    return new;
+  end if;
+  new.promos_at := now();
+  insert into consent_log (user_id, kind, granted, version)
+  values (new.id, 'promos', new.promos, new.promos_version);
+  return new;
+end $$;
+
+drop trigger if exists profiles_promos on public.profiles;
+create trigger profiles_promos before insert or update on public.profiles
+  for each row execute function public.log_promos();
+
+alter table public.consent_log enable row level security;
+drop policy if exists "mis consentimientos o admin" on public.consent_log;
+create policy "mis consentimientos o admin" on public.consent_log for select using (user_id = auth.uid() or is_admin());
