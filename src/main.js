@@ -2,6 +2,7 @@ import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { currentUser, myNotifications, deliverPending, enablePush, finishEmailLink } from './data.js';
 import { PAW, esc, isComplete } from './ui.js';
+import { unlockAudio, startAlarm } from './alarm.js';
 
 import home from './views/home.js';
 import profile from './views/profile.js';
@@ -13,6 +14,7 @@ import recovered from './views/recovered.js';
 import success from './views/success.js';
 import inbox from './views/inbox.js';
 import admin from './views/admin.js';
+import password from './views/password.js';
 
 registerSW({ immediate: true });
 
@@ -27,6 +29,7 @@ const routes = [
   ['caso/:id', success],
   ['avisos', inbox],
   ['admin', admin],
+  ['clave', password],
 ];
 
 function resolve(hash) {
@@ -69,7 +72,7 @@ async function render() {
   const hash = location.hash || '#/';
   let { view, params } = resolve(hash);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
-  if (!isComplete(user) && view !== profile && view !== admin) view = profile;
+  if (!isComplete(user) && view !== profile && view !== admin && view !== password) view = profile;
 
   const tab = hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
@@ -106,13 +109,23 @@ setInterval(() => document.hidden || updateBadge(), 30000);
 // Al tocar una notificación con la app abierta, el Service Worker pide navegar.
 navigator.serviceWorker?.addEventListener('message', (e) => {
   if (e.data?.type === 'navigate') location.hash = e.data.url.replace(/^.*#/, '#');
+  // Aviso push de "¡Encontraron a tu mascota!" con la app abierta.
+  if (e.data?.type === 'alarm' && !document.hidden) startAlarm(e.data.notification);
 });
-// Vuelta desde el enlace del correo ("Entrar con mi correo").
+// El navegador deja sonar la alarma solo después de un toque en la pantalla.
+document.addEventListener('pointerdown', unlockAudio, { once: true });
+// Vuelta desde un enlace del correo: confirmar el correo, o "Olvidé mi
+// contraseña" (type=recovery), que lleva a crear una clave nueva.
 (async () => {
+  const recovery = /(^|[#&])type=recovery(&|$)/.test(location.hash);
   const error = await finishEmailLink().catch((err) => err.message);
   if (error !== null) {
     let to = '#/perfil';
     try { to = localStorage.getItem('petsafe-after-login') || to; localStorage.removeItem('petsafe-after-login'); } catch { /* sin almacenamiento */ }
+    if (recovery && !error) {
+      try { localStorage.setItem('petsafe-after-reset', to); } catch { /* sin almacenamiento */ }
+      to = '#/clave';
+    }
     history.replaceState(null, '', location.pathname + to);
     if (error) alert(`El enlace no sirvió (${error}). Pide uno nuevo desde la app.`);
   }

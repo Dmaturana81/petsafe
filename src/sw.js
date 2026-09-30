@@ -28,16 +28,26 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 // Web Push de la función send-push: { id, title, body, url }.
+// "¡Encontraron a tu mascota!" (url #/encontrada/…) llega como alarma: queda
+// en pantalla hasta tocarla y vibra largo. Si la app está abierta, además
+// suena la sirena (ver alarm.js).
 self.addEventListener('push', (event) => {
   const data = event.data?.json() ?? {};
+  const alarm = /#\/encontrada\//.test(data.url || '');
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Kiltrazo', {
-      body: data.body,
-      tag: data.id, // la app usa el mismo tag: no se repite al abrirla
-      icon: 'icons/icon-192.png',
-      badge: 'icons/icon-192.png',
-      data: { url: data.url || '#/avisos' },
-    }),
+    (async () => {
+      await self.registration.showNotification(data.title || 'Kiltrazo', {
+        body: data.body,
+        tag: data.id, // la app usa el mismo tag: no se repite al abrirla
+        icon: 'icons/icon-192.png',
+        badge: 'icons/icon-192.png',
+        data: { url: data.url || '#/avisos' },
+        ...(alarm ? { requireInteraction: true, renotify: true, vibrate: [800, 300, 800, 300, 1500], silent: false } : {}),
+      });
+      if (!alarm) return;
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      windows.forEach((w) => w.postMessage({ type: 'alarm', notification: data }));
+    })(),
   );
 });
 

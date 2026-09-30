@@ -369,3 +369,22 @@ img { max-width: 100%; }
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
 details[open] > summary { display: none; }
+
+/* Alarma de "¡Encontraron a tu mascota!" */
+.alarm {
+  position: fixed; inset: 0; z-index: 1000;
+  display: grid; place-items: center; padding: 16px;
+  background: rgba(200, 40, 30, 0.92);
+  animation: alarm-flash 1.2s ease-in-out infinite;
+}
+.alarm-box {
+  background: #fff8ef; color: #3a2a20; border-radius: 20px; padding: 24px 20px;
+  max-width: 420px; width: 100%; text-align: center;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.alarm-box h1 { margin: 0; font-size: 1.6rem; }
+.alarm-box p { margin: 0; }
+.alarm-icon { font-size: 4rem; line-height: 1; animation: alarm-shake 0.6s ease-in-out infinite; }
+@keyframes alarm-flash { 50% { background: rgba(240, 110, 40, 0.92); } }
+@keyframes alarm-shake { 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) { .alarm, .alarm-icon { animation: none; } }
