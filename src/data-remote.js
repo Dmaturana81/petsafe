@@ -313,6 +313,12 @@ export async function isAdmin() {
 }
 
 /** El primer usuario que entra al panel queda como administrador. */
+// null si la función aún no está en la base (schema.sql sin actualizar).
+export async function adminExists() {
+  const { data, error } = await sb().rpc('admin_exists');
+  return error ? null : Boolean(data);
+}
+
 export async function claimAdmin() {
   return Boolean(await run(sb().rpc('claim_admin')));
 }

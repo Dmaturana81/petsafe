@@ -141,6 +141,13 @@ begin
   return is_admin();
 end $$;
 
+-- Para esconder "¿Primera vez?" cuando ya hay administrador (por usuario o por correo).
+create or replace function public.admin_exists() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from admins) or exists (select 1 from admin_emails);
+$$;
+grant execute on function public.admin_exists() to anon, authenticated;
+
 -- Convierte la plantilla que arma la app ({ dino: {vector, samples}, basic: {...}, nose: {...} })
 -- en filas: el promedio y cada captura, de la cara y de la nariz.
 drop function if exists public.pet_scores(jsonb);

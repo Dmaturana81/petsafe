@@ -1,7 +1,7 @@
 import {
   allPets, savePet, allFound, saveFound, deleteFound, listUsers, notify, notifyAll,
   latestSuccesses, deleteSuccess, commentsFor, deleteComment, addSuccess, markRecovered,
-  CLOUD, isAdmin, claimAdmin, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
+  CLOUD, isAdmin, claimAdmin, adminExists, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
 } from '../data.js';
 import { generateVapidKeys } from '../notify.js';
 import { mountEmailLogin } from './login-email.js';
@@ -40,16 +40,17 @@ export default async function admin(el, _params, ctx) {
   await ({ alertas, mensajes, casos, datos })[tab](panel, ctx);
 }
 
-// Con Supabase el permiso vive en el servidor: el primer usuario que lo pide
+// Con Supabase el permiso vive en el servidor: se entra con un correo de
+// administrador. Solo mientras no haya ninguno, el primer usuario que lo pide
 // queda como administrador (tabla admins).
-function claim(el, { refresh }) {
+async function claim(el, { refresh }) {
   el.innerHTML = `
     <div class="card">
       <h1>Administrador 🔐</h1>
       <p>Entra con tu correo de administrador. Te enviaremos un enlace para confirmar que es tuyo; así eres administrador en cualquier dispositivo.</p>
       <div id="email-login"></div>
     </div>
-    <div class="card">
+    <div class="card" id="first-time" hidden>
       <h2>¿Primera vez?</h2>
       <p>Si aún no hay administrador, el primer usuario que toque este botón lo será.</p>
       <button class="btn secondary" id="claim">Soy el administrador</button>
@@ -66,6 +67,7 @@ function claim(el, { refresh }) {
     if (await claimAdmin()) refresh();
     else toast('Ya hay un administrador. Pídele acceso.', 'bad');
   });
+  if ((await adminExists()) === false) el.querySelector('#first-time').hidden = false;
 }
 
 function login(el, { refresh }) {
