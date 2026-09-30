@@ -2,7 +2,7 @@ import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { currentUser, myNotifications, deliverPending, enablePush, finishEmailLink } from './data.js';
 import { PAW, esc, isComplete } from './ui.js';
-import { unlockAudio, startAlarm } from './alarm.js';
+import { unlockAudio, startAlarm, checkAlarms } from './alarm.js';
 
 import home from './views/home.js';
 import profile from './views/profile.js';
@@ -94,7 +94,9 @@ async function updateBadge(user) {
   const badge = document.querySelector('.bell .badge');
   if (!user) return (badge.hidden = true);
   await deliverPending(user);
-  const unread = (await myNotifications(user)).filter((n) => !n.read).length;
+  const list = await myNotifications(user);
+  checkAlarms(list);
+  const unread = list.filter((n) => !n.read).length;
   badge.hidden = !unread;
   badge.textContent = unread;
 }
