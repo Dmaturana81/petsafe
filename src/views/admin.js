@@ -408,12 +408,18 @@ async function datos(panel, { refresh }) {
       'Nombres', 'Apellidos', 'Teléfono', 'Correo', 'Dirección', 'Usuario desde',
       'Mascota', 'Tipo', 'Raza', 'Nombre del dueño (registro)', 'Estado', 'Enfermedades', 'Vacunas', 'Mascota registrada', 'Foto',
     ];
-    const person = (u) => [u?.firstName || u?.name, u?.lastName, u?.phone, u?.email, u?.address, day(u?.createdAt)];
+    // Celdas vacías con texto, para distinguir "no lo llenó" de un error.
+    const or = (v, empty = 'No informó') => (v && String(v).trim()) || empty;
+    const person = (u) => (u
+      ? [u.firstName || u.name, u.lastName, u.phone, u.email, u.address, day(u.createdAt)]
+      : ['Sin perfil', '', '', '', '', '']);
     const rows = pets.map((p) => [
       ...person(users.find((u) => u.id === p.ownerId)),
-      p.name, SPECIES[p.species] || '', p.breed || '', p.ownerName, p.status === 'lost' ? 'Perdida' : 'En casa', p.diseases, p.vaccines, day(p.createdAt), photos.get(p.id)?.name || '',
+      or(p.name, 'Sin nombre'), SPECIES[p.species] || 'No informó', or(p.breed), or(p.ownerName), p.status === 'lost' ? 'Perdida' : 'En casa',
+      or(p.diseases), or(p.vaccines), day(p.createdAt), photos.get(p.id)?.name || 'Sin foto',
     ]);
-    for (const u of users) if (!pets.some((p) => p.ownerId === u.id)) rows.push([...person(u), '', '', '', '', '', '', '', '', '']);
+    // Personas que crearon perfil pero aún no registran mascotas: al final.
+    for (const u of users) if (!pets.some((p) => p.ownerId === u.id)) rows.push([...person(u), 'Sin mascota', '', '', '', '', '', '', '', '']);
     return toCsv([header, ...rows]);
   };
   const name = `kiltrazo-datos-${day(new Date().toISOString())}`;

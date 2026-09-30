@@ -23,8 +23,8 @@ export default async function register(el, _params, { user }) {
         <label>3. Raza<input name="breed" list="breeds" placeholder="Ej: Mestizo (quiltro), Labrador o Siamés" autocomplete="off"></label>
         <datalist id="breeds"></datalist>
         <label>4. Nombre del dueño<input name="ownerName" required value="${esc(user.name)}"></label>
-        <label>5. Enfermedades<textarea name="diseases" rows="2" placeholder="Ej: alergia al pollo, epilepsia (o 'ninguna')"></textarea></label>
-        <label>6. Vacunas<textarea name="vaccines" rows="2" placeholder="Ej: antirrábica 2026, óctuple"></textarea></label>
+        <label>5. Enfermedades<textarea name="diseases" rows="2" required placeholder="Ej: alergia al pollo, epilepsia (o 'ninguna')"></textarea></label>
+        <label>6. Vacunas<textarea name="vaccines" rows="2" required placeholder="Ej: antirrábica 2026, óctuple (o 'ninguna')"></textarea></label>
         <button class="btn primary big">Registrar</button>
       </form>
     </div>`;
