@@ -388,3 +388,17 @@ details[open] > summary { display: none; }
 @keyframes alarm-flash { 50% { background: rgba(240, 110, 40, 0.92); } }
 @keyframes alarm-shake { 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
 @media (prefers-reduced-motion: reduce) { .alarm, .alarm-icon { animation: none; } }
+
+/* Admin → Usuarios: tocar un usuario muestra sus mascotas */
+.user-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
+.user-list > li { border-radius: 14px; background: var(--cream); }
+.user-list > li[hidden] { display: none; }
+.user-row { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; }
+.user-row > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.user-row strong, .user-row small { display: block; }
+.user-row small { color: var(--muted); }
+.user-row .count { font-weight: 800; white-space: nowrap; }
+.user-detail { padding: 0 12px 12px; }
+.user-detail[hidden] { display: none; }
+.user-detail .pet-list li { align-items: flex-start; }
+.user-detail .pet-list small { display: block; overflow-wrap: anywhere; }
