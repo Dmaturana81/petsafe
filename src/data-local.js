@@ -85,7 +85,7 @@ export async function reportLost(pet) {
     if (suggest && !f.petId) similar.push({ id: f.id, photo: f.photo, createdAt: f.createdAt, score });
   }
   if (best && best.report.petId !== pet.id) {
-    best.report.petId = pet.id;
+    Object.assign(best.report, { petId: pet.id, matchKind: 'auto', matchScore: best.score });
     await db.put('found', best.report);
     await notifyOwnerOfMatch(pet, best.report);
   }
@@ -148,6 +148,7 @@ export async function reportFound(finder, { photo, biometric, lat, lng, species 
     // Una mascota propia no se "encuentra"; se informa para no confundir.
     if (pet.ownerId === finder.id) {
       if (match) ownMatch = pet.name;
+      report.ownScore = Math.max(report.ownScore || 0, score);
       continue;
     }
     compared++;
@@ -156,7 +157,8 @@ export async function reportFound(finder, { photo, biometric, lat, lng, species 
     // Perdidas algo parecidas: quien la encontró puede decir "¡es esta!".
     if (suggest && pet.status === 'lost') similar.push({ ...pick(pet), score });
   }
-  if (best) report.petId = best.pet.id;
+  // Igual que report_found en schema.sql: se anota cómo se ligó y con qué parecido.
+  if (best) Object.assign(report, { petId: best.pet.id, matchKind: 'auto', matchScore: best.score });
   await db.put('found', report);
   if (best) await notifyOwnerOfMatch(best.pet, report);
 
@@ -175,7 +177,7 @@ const pick = ({ id, name, photo, species, breed, lostAt }) => ({ id, name, photo
 export async function confirmFound(finder, reportId, petId) {
   const [report, pet] = await Promise.all([db.get('found', reportId), db.get('pets', petId)]);
   if (!report || !pet || report.finderId !== finder.id || report.petId || pet.status !== 'lost') throw new Error('Aviso no disponible');
-  report.petId = pet.id;
+  Object.assign(report, { petId: pet.id, matchKind: 'finder', matchScore: compare(pet.biometric, report.biometric).score });
   await db.put('found', report);
   await notify(pet.ownerId, {
     type: 'match',
@@ -190,6 +192,8 @@ export async function confirmFound(finder, reportId, petId) {
 export async function claimFound(pet, reportId) {
   const report = await db.get('found', reportId);
   if (!report || report.status !== 'open' || (report.petId && report.petId !== pet.id)) throw new Error('Aviso no disponible');
+  // Si la app ya la había ligado sola, se mantiene como coincidencia automática.
+  if (report.petId !== pet.id) Object.assign(report, { matchKind: 'owner', matchScore: compare(pet.biometric, report.biometric).score });
   report.petId = pet.id;
   await db.put('found', report);
   if (report.finderId) {
