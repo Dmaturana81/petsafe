@@ -372,7 +372,7 @@ details[open] > summary { display: none; }
 
 /* Alarma de "¡Encontraron a tu mascota!" */
 .alarm {
-  position: fixed; inset: 0; z-index: 1000;
+  position: fixed; inset: 0; z-index: 1100;
   display: grid; place-items: center; padding: 16px;
   background: rgba(200, 40, 30, 0.92);
   animation: alarm-flash 1.2s ease-in-out infinite;
@@ -402,3 +402,35 @@ details[open] > summary { display: none; }
 .user-detail[hidden] { display: none; }
 .user-detail .pet-list li { align-items: flex-start; }
 .user-detail .pet-list small { display: block; overflow-wrap: anywhere; }
+
+/* Guía para sujetar a la mascota en la foto (botón ⓘ del escáner) */
+.tips-open {
+  font: inherit; font-weight: 800; font-size: 0.95rem; cursor: pointer;
+  padding: 8px 16px; border-radius: 999px; border: 2px solid var(--sun);
+  background: var(--cream); color: var(--coral-dark);
+}
+.tips-sheet {
+  position: fixed; inset: 0; z-index: 1050; background: rgba(59, 42, 32, 0.55);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.tips-body {
+  position: relative; width: min(100%, 520px); max-height: 92vh; overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  display: grid; gap: 12px;
+}
+.tips-body h2 { margin: 0 40px 0 0; }
+.tips-body p { margin: 0; }
+.tips-close {
+  position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; border-radius: 50%;
+  border: 0; background: var(--cream); font-size: 1.1rem; cursor: pointer; color: var(--text);
+}
+.tip { display: grid; gap: 8px; padding: 12px; border-radius: 16px; background: var(--cream); }
+.tip h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.05rem; }
+.tip h3 span {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--coral); color: #fff; font-size: 0.9rem;
+}
+.tip svg { width: 100%; height: auto; background: #fff; border-radius: 12px; }
+.tip.avoid { background: #fde6df; }
+.tip.avoid h3 span { background: var(--coral-dark); }

@@ -17,6 +17,7 @@
 
 import { SIZE, embed, locatePet, average, warmUp, quality, consistency, similarity } from './biometrics.js';
 import { esc } from './ui.js';
+import { openPhotoTips } from './photo-tips.js';
 
 const NOSE_STEP = { text: 'A unos 10 cm: que la nariz llene el círculo', kind: 'nose', optional: true };
 // La nariz se recorta más cerrada (60% del cuadro) para que se vean los pliegues.
@@ -72,6 +73,7 @@ export function mountScanner(root, { mode = 'identify', label = 'Escanear', done
 
   root.innerHTML = `
     <div class="scanner">
+      <button type="button" class="tips-open" data-act="tips">ⓘ ¿Cómo sujetarlo para la foto?</button>
       <div class="scan-frame">
         <video playsinline muted autoplay></video>
         <img class="scan-preview" alt="" hidden>
@@ -106,6 +108,7 @@ export function mountScanner(root, { mode = 'identify', label = 'Escanear', done
   const torch = $('[data-act=torch]');
   const file = $('input[type=file]');
   const warning = $('.scan-warning');
+  $('[data-act=tips]').addEventListener('click', openPhotoTips);
   let stream;
   let track; // pista de video de la cámara
   let noseMode = false;
