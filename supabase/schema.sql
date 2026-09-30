@@ -87,6 +87,14 @@ create table if not exists public.found_reports (
 
 alter table public.found_reports add column if not exists species text not null default '';
 
+-- Para medir el reconocimiento (pestaña Reconocimiento del admin): cómo se ligó
+-- la mascota ('auto' = la app sola, 'finder' = quien la encontró eligió una
+-- sugerida, 'owner' = el dueño la reconoció), el parecido con esa mascota y el
+-- parecido con las mascotas propias de quien escaneó (pruebas del dueño).
+alter table public.found_reports add column if not exists match_kind text;
+alter table public.found_reports add column if not exists match_score real;
+alter table public.found_reports add column if not exists own_score real;
+
 create table if not exists public.found_samples (
   id bigint generated always as identity primary key,
   found_id uuid not null references public.found_reports on delete cascade,
@@ -308,7 +316,7 @@ create or replace function public.report_found(
 language plpgsql security definer set search_path = public, extensions as $$
 declare
   r_id uuid; b_id uuid; b_owner uuid; b_name text; b_diseases text; b_vaccines text;
-  own_name text; n int; top real;
+  own_name text; n int; top real; own_top real; b_score real;
 begin
   if auth.uid() is null then raise exception 'Sin sesión'; end if;
 
@@ -324,16 +332,19 @@ begin
 
   select p.name into own_name from _scores s join pets p on p.id = s.pet_id
   where p.owner_id = auth.uid() and is_pet_match(s.score, s.model, s.nose) order by s.score desc limit 1;
+  select max(s.score) into own_top from _scores s join pets p on p.id = s.pet_id where p.owner_id = auth.uid();
 
   select count(*), max(s.score) into n, top from _scores s join pets p on p.id = s.pet_id
   where p.owner_id <> auth.uid();
 
-  select p.id, p.owner_id, p.name, p.diseases, p.vaccines into b_id, b_owner, b_name, b_diseases, b_vaccines
+  select p.id, p.owner_id, p.name, p.diseases, p.vaccines, s.score into b_id, b_owner, b_name, b_diseases, b_vaccines, b_score
   from _scores s join pets p on p.id = s.pet_id
   where p.owner_id <> auth.uid() and is_pet_match(s.score, s.model, s.nose)
   order by s.score desc limit 1;
 
-  update found_reports set best_score = top, pet_id = b_id where id = r_id;
+  update found_reports set best_score = top, pet_id = b_id, own_score = own_top,
+    match_kind = case when b_id is not null then 'auto' end, match_score = b_score
+  where id = r_id;
 
   if b_id is not null then
     insert into notifications (user_id, type, title, body, url)
@@ -362,7 +373,8 @@ declare pet pets;
 begin
   select * into pet from pets where id = p_pet and status = 'lost' and owner_id <> auth.uid();
   if pet.id is null then raise exception 'Mascota no disponible'; end if;
-  update found_reports set pet_id = p_pet
+  update found_reports set pet_id = p_pet, match_kind = 'finder',
+    match_score = (select score from found_scores(p_pet) where found_id = p_found)
   where id = p_found and finder_id = auth.uid() and status = 'open' and pet_id is null;
   if not found then raise exception 'Aviso no disponible'; end if;
   insert into notifications (user_id, type, title, body, url)
@@ -377,7 +389,7 @@ end $$;
 drop function if exists public.report_lost(uuid);
 create function public.report_lost(p_pet uuid) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
-declare f_id uuid; p_name text; sugg jsonb;
+declare f_id uuid; f_score real; p_name text; sugg jsonb;
 begin
   update pets set status = 'lost', lost_at = now()
   where id = p_pet and owner_id = auth.uid() returning name into p_name;
@@ -389,11 +401,11 @@ begin
     join found_reports fr on fr.id = s.found_id
     where fr.pet_id is null or fr.pet_id = p_pet;
 
-  select found_id into f_id from _found
+  select found_id, score into f_id, f_score from _found
   where is_pet_match(score, model, nose) order by score desc limit 1;
 
   if f_id is not null and not exists (select 1 from found_reports where id = f_id and pet_id = p_pet) then
-    update found_reports set pet_id = p_pet where id = f_id;
+    update found_reports set pet_id = p_pet, match_kind = 'auto', match_score = f_score where id = f_id;
     insert into notifications (user_id, type, title, body, url)
     values (auth.uid(), 'match', '¡Encontraron a ' || p_name || '! 🐾',
             'Toca para ver dónde está y contactar a quien la encontró.', '#/encontrada/' || f_id);
@@ -416,7 +428,11 @@ declare f found_reports; p_name text;
 begin
   select name into p_name from pets where id = p_pet and owner_id = auth.uid();
   if p_name is null then raise exception 'Mascota no encontrada'; end if;
-  update found_reports set pet_id = p_pet
+  -- Si la app ya la había ligado sola, se mantiene como coincidencia automática.
+  update found_reports set pet_id = p_pet,
+    match_kind = case when pet_id = p_pet then match_kind else 'owner' end,
+    match_score = case when pet_id = p_pet then match_score
+      else (select score from found_scores(p_pet) where found_id = p_found) end
   where id = p_found and status = 'open' and (pet_id is null or pet_id = p_pet)
   returning * into f;
   if f.id is null then raise exception 'Aviso no disponible'; end if;

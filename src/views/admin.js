@@ -8,6 +8,7 @@ import { mountEmailLogin } from './login-email.js';
 import { esc, timeAgo, toast, changed } from '../ui.js';
 import { SPECIES, describe } from '../breeds.js';
 import { zip, fromDataUrl } from '../zip.js';
+import { THRESHOLDS, SUGGEST_MARGIN } from '../biometrics.js';
 
 // PIN de prototipo. En producción el acceso de administrador debe
 // validarse en el servidor con un rol de usuario.
@@ -23,7 +24,7 @@ export default async function admin(el, _params, ctx) {
     <div class="admin-head">
       <h1>Administrador</h1>
       <div class="tabs">
-        ${[['alertas', '🚨 Alertas'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
+        ${[['alertas', '🚨 Alertas'], ['recon', '🎯 Reconocimiento'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
           .map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}
       </div>
     </div>
@@ -37,7 +38,7 @@ export default async function admin(el, _params, ctx) {
   );
 
   const panel = el.querySelector('#panel');
-  await ({ alertas, mensajes, usuarios, casos, datos })[tab](panel, ctx);
+  await ({ alertas, recon, mensajes, usuarios, casos, datos })[tab](panel, ctx);
 }
 
 // Con Supabase el permiso vive en el servidor: se entra con un correo de
@@ -86,6 +87,79 @@ function login(el, { refresh }) {
       refresh();
     } else toast('PIN incorrecto', 'bad');
   });
+}
+
+// Qué tan bien reconoce la app: cómo terminó cada aviso de "encontré" y con
+// qué parecido, para ajustar el umbral con datos reales.
+async function recon(panel) {
+  const [pets, found] = await Promise.all([allPets(), allFound()]);
+  const petName = (id) => pets.find((p) => p.id === id)?.name || '?';
+  const match = THRESHOLDS.dino, suggest = THRESHOLDS.dino - SUGGEST_MARGIN;
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const all = [...found].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Escaneos de una mascota propia sin ligar a otra: pruebas del dueño, aparte.
+  const isTest = (f) => f.ownScore != null && !f.petId;
+  const tests = all.filter(isTest);
+  const list = all.filter((f) => !isTest(f));
+  const count = (fn) => list.filter(fn).length;
+  const auto = count((f) => f.petId && f.matchKind === 'auto');
+  const people = count((f) => f.petId && (f.matchKind === 'finder' || f.matchKind === 'owner'));
+  const old = count((f) => f.petId && !f.matchKind);
+  const none = count((f) => !f.petId);
+  const share = (n) => (list.length ? ` (${Math.round((n / list.length) * 100)}%)` : '');
+
+  const how = (f) => (isTest(f) ? ['test', 'Prueba con tu propia mascota']
+    : !f.petId ? ['none', 'Sin mascota ligada']
+    : f.matchKind === 'auto' ? ['auto', `Match automático con ${esc(petName(f.petId))}`]
+      : f.matchKind === 'finder' ? ['people', `Quien la encontró eligió a ${esc(petName(f.petId))}`]
+        : f.matchKind === 'owner' ? ['people', `El dueño reconoció a ${esc(petName(f.petId))}`]
+          : ['old', `Ligada a ${esc(petName(f.petId))} (antes de medir)`]);
+  // Barra de 50% a 100% con marcas en los umbrales de sugerencia y de match.
+  const pos = (v) => `${Math.min(100, Math.max(0, ((v - 0.5) / 0.5) * 100))}%`;
+  const bar = (label, v) => (v == null ? '' : `
+    <div class="score-row"><span>${label}</span><strong>${pct(v)}</strong></div>
+    <div class="score-bar"><i class="mark suggest" style="left:${pos(suggest)}"></i><i class="mark match" style="left:${pos(match)}"></i><b class="${v >= match ? 'hi' : v >= suggest ? 'mid' : 'lo'}" style="width:${pos(v)}"></b></div>`);
+
+  panel.innerHTML = `
+    <div class="card">
+      <h2>Resumen (${list.length} avisos de "encontré")</h2>
+      <p class="muted small">Sin contar tus pruebas con mascotas propias.</p>
+      <div class="stat-grid">
+        <div class="stat hi"><strong>${auto}${share(auto)}</strong><small>Match automático</small></div>
+        <div class="stat mid"><strong>${people}${share(people)}</strong><small>Confirmados por una persona</small></div>
+        <div class="stat lo"><strong>${none}${share(none)}</strong><small>Sin mascota ligada</small></div>
+        <div class="stat"><strong>${tests.length}</strong><small>Pruebas con mascotas propias</small></div>
+      </div>
+      ${old ? `<p class="muted small">${old} avisos se ligaron antes de empezar a medir y no se cuentan arriba.</p>` : ''}
+      <p class="muted small">Match automático desde ${pct(match)} de parecido en la cara. Entre ${pct(suggest)} y ${pct(match)} se muestra como sugerencia "¿es esta?".</p>
+    </div>
+
+    <div class="card">
+      <h2>Cómo calibrar</h2>
+      <ol class="small">
+        <li>Registra a tu mascota. Después, en "Encontré una mascota", escanéala desde tu misma cuenta: queda como prueba con tu mascota.</li>
+        <li>Haz lo mismo con otra luz y otro ángulo, y también con un perro distinto.</li>
+        <li>Si tus pruebas con la misma mascota quedan entre ${pct(suggest)} y ${pct(match)}, el umbral está alto. Si un perro distinto supera ${pct(match)}, está bajo.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Cada escaneo</h2>
+      ${all.length ? `<ul class="recon-list">${all.map((f) => {
+        const [tone, text] = how(f);
+        return `
+        <li>
+          <img src="${esc(f.photo)}" alt="">
+          <div>
+            <strong class="tone-${tone}">${text}</strong>
+            <small>${timeAgo(f.createdAt)} · ${esc(f.finderName)}</small>
+            ${bar('Parecido con la mascota ligada', f.matchScore)}
+            ${f.petId ? '' : bar('Más parecida de otros dueños', f.bestScore)}
+            ${bar('Parecido con tu propia mascota', f.ownScore)}
+          </div>
+        </li>`;
+      }).join('')}</ul>` : '<p class="muted">Todavía no hay escaneos de mascotas encontradas.</p>'}
+    </div>`;
 }
 
 async function alertas(panel, { refresh }) {

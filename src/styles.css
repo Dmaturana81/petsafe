@@ -446,3 +446,26 @@ details[open] > summary { display: none; }
 .legal ul { padding-left: 20px; margin: 0; }
 .legal li { margin: 4px 0; }
 .consent span { font-weight: 400; color: var(--text); }
+
+/* Admin: reconocimiento */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.stat { background: var(--cream); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; }
+.stat strong { font-size: 1.3rem; }
+.stat small { color: var(--muted); font-weight: 700; }
+.stat.hi strong, .tone-auto { color: #3f8f5b; }
+.stat.mid strong, .tone-people { color: #c77a12; }
+.stat.lo strong, .tone-none { color: var(--muted); }
+.recon-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+.recon-list li { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: start; }
+.recon-list img { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; }
+.recon-list strong { display: block; }
+.recon-list small { color: var(--muted); }
+.score-row { display: flex; justify-content: space-between; font-size: 0.8rem; margin-top: 8px; color: var(--muted); }
+.score-row strong { color: var(--text); }
+.score-bar { position: relative; height: 8px; border-radius: 4px; background: var(--cream); margin-top: 3px; }
+.score-bar b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.score-bar b.hi { background: #5aa876; }
+.score-bar b.mid { background: var(--orange); }
+.score-bar b.lo { background: #c9b8ab; }
+.score-bar .mark { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: 0.35; z-index: 1; }
+.tone-test { color: #4f7fb8; }
