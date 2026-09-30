@@ -58,7 +58,7 @@ const now = () => performance.now();
 
 /**
  * Monta el escáner dentro de `root`.
- * `onDone({ photo, biometric, looksLikePet, quality })` se llama al terminar.
+ * `onDone({ photo, biometric, looksLikePet, quality, crops })` se llama al terminar.
  */
 export function mountScanner(root, { mode = 'identify', label = 'Escanear', doneText, onDone, onReset }) {
   warmUp();
@@ -476,6 +476,8 @@ export function mountScanner(root, { mode = 'identify', label = 'Escanear', done
       biometric: average(embs, noses.map((s) => s.emb)),
       looksLikePet: known ? faces.some((s) => s.looksLikePet) : null,
       quality: level,
+      // Recortes del escaneo (JPEG), para entrenar si el dueño da permiso.
+      crops: { face: faces.map((s) => s.photo), nose: noses.map((s) => s.photo) },
     });
   }
 

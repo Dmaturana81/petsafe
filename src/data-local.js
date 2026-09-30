@@ -31,8 +31,11 @@ export const listUsers = () => db.all('users');
 
 // ---------- Mascotas ----------
 
-export async function registerPet(owner, { name, species = '', breed = '', ownerName, diseases, vaccines, photo, biometric }) {
+export async function registerPet(owner, { name, species = '', breed = '', ownerName, diseases, vaccines, photo, biometric, crops }) {
+  // En modo local las fotos para entrenar quedan dentro del registro de la mascota.
+  const train = crops ? { trainOk: true, trainAt: now(), trainCrops: crops, trainPhotos: crops.face.length + crops.nose.length } : {};
   return db.put('pets', {
+    ...train,
     id: uid('p_'),
     ownerId: owner.id,
     name,
@@ -50,6 +53,19 @@ export async function registerPet(owner, { name, species = '', breed = '', owner
 
 export async function myPets(user) {
   return (await db.all('pets')).filter((p) => p.ownerId === user.id);
+}
+
+/** Fotos para entrenar, como [{ name, data }] (carpeta por mascota). */
+export async function trainingPhotos() {
+  const out = [];
+  for (const pet of await db.all('pets')) {
+    if (!pet.trainCrops) continue;
+    const files = [...pet.trainCrops.face.map((p, i) => [`cara-${i + 1}.jpg`, p]), ...pet.trainCrops.nose.map((p, i) => [`nariz-${i + 1}.jpg`, p])];
+    for (const [file, dataUrl] of files) {
+      out.push({ name: `${pet.id}/${file}`, data: new Uint8Array(await (await fetch(dataUrl)).arrayBuffer()) });
+    }
+  }
+  return out;
 }
 
 export const getPet = (id) => db.get('pets', id);

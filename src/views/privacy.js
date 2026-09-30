@@ -41,6 +41,7 @@ export default async function privacy(el) {
       <ul>
         <li>Para reconocer a tu mascota y avisarte si alguien la encuentra.</li>
         <li>Para que el dueño de una mascota que encontraste pueda contactarte.</li>
+        <li>Solo si lo permitiste al registrar a tu mascota: para mejorar el reconocimiento de mascotas con las fotos de su escaneo. Esas fotos solo las ve el administrador y se borran si eliminas a tu mascota.</li>
         <li>Solo si marcaste la casilla: para enviarte ofertas y novedades útiles para tu mascota. Puedes darte de baja cuando quieras desde tu perfil, y eso no cambia nada más en la app.</li>
       </ul>
 
