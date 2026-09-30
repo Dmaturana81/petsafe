@@ -7,7 +7,16 @@
 import { esc } from './ui.js';
 
 let ctx;
-const shown = new Set();
+
+// Avisos que ya sonaron en este dispositivo (para no repetirlos al recargar).
+const KEY = 'petsafe-alarmed';
+function alarmed() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+}
+function remember(id) {
+  const ids = [id, ...alarmed().filter((x) => x !== id)].slice(0, 50);
+  try { localStorage.setItem(KEY, JSON.stringify(ids)); } catch { /* sin almacenamiento */ }
+}
 
 export function unlockAudio() {
   try {
@@ -59,9 +68,23 @@ function siren() {
   return stop;
 }
 
+/**
+ * Hace sonar los avisos de hallazgo recientes (30 min) que aún no se leen ni
+ * sonaron aquí. Se llama cada vez que la app revisa sus avisos, así suena
+ * aunque el aviso haya llegado por push o con la app en segundo plano.
+ */
+export function checkAlarms(list) {
+  if (document.hidden) return;
+  const recent = Date.now() - 30 * 60 * 1000;
+  const n = list.find((x) => isAlarm(x) && !x.read && new Date(x.createdAt).getTime() > recent && !alarmed().includes(x.id));
+  if (n) startAlarm(n);
+}
+
 export function startAlarm({ id, title, body, url }) {
-  if (id && shown.has(id)) return;
-  if (id) shown.add(id);
+  if (id && alarmed().includes(id)) return;
+  if (id) remember(id);
+  // Ya está mirando ese aviso.
+  if (url && location.hash === url.replace(/^.*#/, '#')) return;
   const stopSound = siren();
   navigator.vibrate?.([...VIBRATE, 300, ...VIBRATE, 300, ...VIBRATE]);
 
