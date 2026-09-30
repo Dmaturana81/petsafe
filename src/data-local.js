@@ -16,6 +16,8 @@ export async function currentUser() {
 
 export async function saveUser({ id, ...fields }) {
   const old = id ? await db.get('users', id) : null;
+  // Igual que en Supabase: la fecha del consentimiento cambia solo si cambia la respuesta.
+  if (fields.promos !== undefined && fields.promos !== Boolean(old?.promos)) fields.promosAt = now();
   const user = await db.put('users', { ...old, ...fields, id: id || uid('u_'), createdAt: old?.createdAt || now() });
   await db.put('meta', { id: 'currentUser', userId: user.id });
   return user;

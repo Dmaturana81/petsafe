@@ -3,6 +3,8 @@ import { mountEmailLogin } from './login-email.js';
 import { askPermission, notificationsSupported } from '../notify.js';
 import { esc, toast, go, isComplete } from '../ui.js';
 import { SPECIES, breedOptions, describe } from '../breeds.js';
+import { PROMOS_VERSION, SUPPORT_URL } from '../config.js';
+import { promosBox, supportCard } from './privacy.js';
 
 export default async function profile(el, _params, { user, refresh }) {
   // Con Supabase cada celular es un usuario; cambiar de usuario es solo para pruebas locales.
@@ -38,11 +40,24 @@ export default async function profile(el, _params, { user, refresh }) {
         ${CLOUD && !user ? `
           <label>Crea una clave<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
           <p class="muted small">Con tu correo y esta clave entras desde cualquier celular o computador.</p>` : ''}
-        <p class="muted small">Tu nombre y teléfono solo se comparten con el dueño de una mascota que encuentres. El correo y la dirección solo los ve el administrador de Kiltrazo.</p>
+        <p class="muted small">Tu nombre y teléfono solo se comparten con el dueño de una mascota que encuentres. El correo y la dirección solo los ve el administrador de Kiltrazo. <a href="#/privacidad">Política de privacidad</a></p>
+        ${saved ? '' : promosBox(user?.promos)}
         <button class="btn primary big">${user ? 'Guardar' : 'Comenzar'}</button>
         ${saved ? '<button type="button" class="btn ghost" id="cancel-profile">Cancelar</button>' : ''}
       </form>
     </div>
+
+    ${saved ? `
+      <div class="card">
+        <h2>Ofertas y novedades</h2>
+        <p>${user.promos
+          ? `✅ Recibes ofertas útiles para tu mascota${user.promosAt ? ` (aceptaste el ${new Date(user.promosAt).toLocaleDateString('es-CL')})` : ''}. Kiltrazo nunca entrega tus datos a las empresas.`
+          : 'No recibes ofertas. Si quieres, Kiltrazo te puede avisar de descuentos de veterinarias y tiendas de tu comuna, sin entregarles tus datos.'}</p>
+        <button class="btn ${user.promos ? 'ghost' : 'secondary'}" id="promos-toggle">${user.promos ? 'Darme de baja' : 'Quiero recibir ofertas'}</button>
+        <p class="muted small"><a href="#/privacidad">Política de privacidad</a></p>
+      </div>` : ''}
+
+    ${user && SUPPORT_URL ? supportCard() : ''}
 
     ${user ? `
       <div class="card">
@@ -129,6 +144,8 @@ export default async function profile(el, _params, { user, refresh }) {
     const f = new FormData(e.target);
     const data = Object.fromEntries(['firstName', 'lastName', 'phone', 'email', 'address'].map((k) => [k, f.get(k).trim()]));
     data.email = data.email.toLowerCase();
+    // La casilla de ofertas solo aparece al crear el perfil; nunca viene marcada.
+    if (e.target.promos) Object.assign(data, { promos: e.target.promos.checked, promosVersion: PROMOS_VERSION });
     if (f.get('password') && !(await makeAccount(data.email, f.get('password'), e.target))) return;
     await saveUser({ id: user?.id, ...data, name: `${data.firstName} ${data.lastName}` });
     if (!user && (await askPermission()) === 'granted') await enablePush().catch(() => {});
@@ -168,6 +185,18 @@ export default async function profile(el, _params, { user, refresh }) {
     profileForm.querySelector('input').focus();
   });
   el.querySelector('#cancel-profile')?.addEventListener('click', () => refresh());
+
+  el.querySelector('#promos-toggle')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      await saveUser({ ...user, promos: !user.promos, promosVersion: PROMOS_VERSION });
+      toast(user.promos ? 'Listo, ya no recibirás ofertas.' : '¡Listo! Te avisaremos de ofertas útiles.', 'ok');
+      refresh();
+    } catch (err) {
+      toast(`No se pudo guardar: ${err.message}`, 'bad');
+      e.target.disabled = false;
+    }
+  });
 
   el.querySelectorAll('.my-pets li').forEach((li) => {
     const pet = pets.find((p) => p.id === li.dataset.pet);

@@ -15,6 +15,7 @@ import success from './views/success.js';
 import inbox from './views/inbox.js';
 import admin from './views/admin.js';
 import password from './views/password.js';
+import privacy from './views/privacy.js';
 
 registerSW({ immediate: true });
 
@@ -30,6 +31,7 @@ const routes = [
   ['avisos', inbox],
   ['admin', admin],
   ['clave', password],
+  ['privacidad', privacy],
 ];
 
 function resolve(hash) {
@@ -72,7 +74,7 @@ async function render() {
   const hash = location.hash || '#/';
   let { view, params } = resolve(hash);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
-  if (!isComplete(user) && view !== profile && view !== admin && view !== password) view = profile;
+  if (!isComplete(user) && view !== profile && view !== admin && view !== password && view !== privacy) view = profile;
 
   const tab = hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));

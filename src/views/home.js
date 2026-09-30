@@ -1,5 +1,7 @@
 import { latestSuccesses, countComments, myPets } from '../data.js';
 import { esc, timeAgo } from '../ui.js';
+import { SUPPORT_URL } from '../config.js';
+import { supportCard } from './privacy.js';
 
 export default async function home(el, _params, { user }) {
   const [successes, counts, pets] = await Promise.all([latestSuccesses(6), countComments(), myPets(user)]);
@@ -54,5 +56,7 @@ export default async function home(el, _params, { user }) {
           <div class="empty-emoji">🐕‍🦺</div>
           <p>Aquí aparecerán los últimos 6 reencuentros.</p>
         </div>`}
-    </section>`;
+    </section>
+
+    ${SUPPORT_URL ? supportCard() : ''}`;
 }
