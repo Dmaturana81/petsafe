@@ -89,14 +89,19 @@ Los avisos se guardan en la tabla `notifications`. Cada aviso nuevo llama (con `
    datos la llama sin sesión; la función solo envía avisos que existen, una vez).
 5. En cada celular: abrir la app (en iPhone, instalada en la pantalla de inicio) y activar las notificaciones en Perfil.
 
-## Entrar con correo y administrador en cualquier dispositivo
+## Cuenta con correo y clave, y administrador en cualquier dispositivo
 
-Cada dispositivo entra solo (usuario anónimo). Con **Perfil → Entrar con mi correo** la persona confirma su
-correo con un código y usa la misma cuenta en cualquier dispositivo. Quien entra con un correo de la tabla
-`admin_emails` es administrador. Configuración, una vez:
+Al crear su perfil cada persona elige una clave; con su correo y clave entra desde cualquier dispositivo y ve
+sus datos y mascotas (**Perfil → ¿Ya tienes cuenta?**). Quien ya usaba la app sin clave la crea en
+**Perfil → Tu cuenta**. "Olvidé mi contraseña" envía un correo con un enlace para crear una clave nueva.
+Quien entra con un correo de la tabla `admin_emails` es administrador. Configuración, una vez:
 
 1. Correr `supabase/schema.sql` y luego `insert into public.admin_emails values ('tu-correo@ejemplo.com');` (en minúsculas).
 2. En Supabase → **Authentication → URL Configuration**: Site URL `https://andresmaturana-ui.github.io/petsafe/`
-   y en Redirect URLs agregar `https://andresmaturana-ui.github.io/petsafe/**`. El correo gratis de Supabase
-   trae un enlace; al tocarlo se vuelve a la app con la sesión iniciada. (Con un servidor de correo propio se
-   puede agregar `{{ .Token }}` a las plantillas y la app también acepta el código.)
+   y en Redirect URLs agregar `https://andresmaturana-ui.github.io/petsafe/**` (para el enlace de "Olvidé mi
+   contraseña").
+3. En Supabase → **Authentication → Sign In / Providers → Email**, apagar **Confirm email**: así la cuenta queda
+   lista al tiro, sin correo de confirmación (el correo gratis de Supabase permite muy pocos envíos por hora).
+   Con eso nadie comprueba que el correo sea de quien lo escribe, así que el administrador debe crear su
+   cuenta con su correo de `admin_emails` antes que nadie. Si se deja encendido, la app pide confirmar el
+   correo con el enlace que llega.

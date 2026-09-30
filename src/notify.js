@@ -4,6 +4,8 @@
 // Con la app cerrada llegan por Web Push: la función send-push de Supabase
 // los envía a la suscripción que guarda cada celular (ver subscribePush).
 
+import { isAlarm, alarmOptions, startAlarm } from './alarm.js';
+
 export function notificationsSupported() {
   return 'Notification' in window && 'serviceWorker' in navigator;
 }
@@ -14,12 +16,18 @@ export async function askPermission() {
   return Notification.permission;
 }
 
-export async function pushLocal({ id, title, body, url }) {
+export async function pushLocal(n) {
+  const { id, title, body, url } = n;
+  // "¡Encontraron a tu mascota!" con la app abierta: alarma en pantalla.
+  if (isAlarm(n) && !document.hidden) startAlarm(n);
   if (!notificationsSupported() || Notification.permission !== 'granted') return false;
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     // Mismo tag que el push: si el aviso ya llegó con la app cerrada, no se repite.
-    const options = { body, tag: id, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url }, vibrate: [120, 60, 120] };
+    const options = {
+      body, tag: id, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url }, vibrate: [120, 60, 120],
+      ...(isAlarm(n) ? alarmOptions : {}),
+    };
     if (reg) await reg.showNotification(title, options);
     else new Notification(title, options);
     return true;

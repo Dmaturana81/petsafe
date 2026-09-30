@@ -58,30 +58,60 @@ export async function saveUser({ name, phone, firstName = '', lastName = '', ema
 
 export async function switchUser() {}
 
-// ---------- Entrar con correo ----------
-// Con el mismo correo se es el mismo usuario en cualquier dispositivo (y el
-// administrador, si su correo está en admin_emails). Supabase envía un código.
+// ---------- Cuenta: correo y clave ----------
+// Con el mismo correo y clave se es el mismo usuario en cualquier dispositivo
+// (y el administrador, si su correo está en admin_emails).
 
-// 'email_change': el correo queda en el usuario de este dispositivo (conserva
-// sus datos y mascotas). 'email': el correo ya tiene cuenta y se entra a ella.
-// El correo gratis de Supabase trae un enlace (no un código): al tocarlo se
-// vuelve a la app con la sesión iniciada (ver finishEmailLink).
-let codeType = 'email';
 const back = () => location.origin + location.pathname;
 
-export async function sendLoginCode(email) {
+function friendly(error) {
+  const m = error.message || String(error);
+  if (/invalid login credentials/i.test(m)) return 'Correo o clave incorrectos.';
+  if (/not confirmed/i.test(m)) return 'Primero confirma tu correo con el enlace que te enviamos.';
+  if (/already|registered|exists/i.test(m)) return 'Ya existe una cuenta con ese correo. Entra con tu clave o usa "Olvidé mi contraseña".';
+  if (/rate limit|security purposes/i.test(m)) return 'Se enviaron demasiados correos. Espera un rato e inténtalo de nuevo.';
+  if (/password/i.test(m) && /least|short|weak/i.test(m)) return 'La clave debe tener al menos 6 caracteres.';
+  return m;
+}
+
+/**
+ * Convierte al usuario de este dispositivo en una cuenta con correo y clave
+ * (conserva sus datos y mascotas). Devuelve true si quedó lista, o false si
+ * Supabase pide confirmar el correo primero ("Confirm email" activado).
+ */
+export async function createAccount(email, password) {
   const auth = await session();
-  if (auth.is_anonymous) {
-    const { error } = await sb().auth.updateUser({ email }, { emailRedirectTo: back() });
-    if (!error) {
-      codeType = 'email_change';
-      return;
-    }
-    if (!/already|registered|exists/i.test(error.message)) throw new Error(error.message);
-  }
-  const { error } = await sb().auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: back() } });
-  if (error) throw new Error(error.message);
-  codeType = 'email';
+  const change = auth.email === email ? { password } : { email, password };
+  const { data, error } = await sb().auth.updateUser(change, { emailRedirectTo: back() });
+  if (error) throw new Error(friendly(error));
+  if (data.user?.email !== email) return false;
+  await sb().auth.refreshSession();
+  sessionPromise = Promise.resolve(data.user);
+  return true;
+}
+
+export async function signIn(email, password) {
+  const { data, error } = await sb().auth.signInWithPassword({ email, password });
+  if (error) throw new Error(friendly(error));
+  sessionPromise = Promise.resolve(data.user);
+  watching = null;
+}
+
+/** Envía el correo para crear una clave nueva (vuelve a la app, ver finishEmailLink). */
+export async function resetPassword(email) {
+  const { error } = await sb().auth.resetPasswordForEmail(email, { redirectTo: back() });
+  if (error) throw new Error(friendly(error));
+}
+
+export async function setPassword(password) {
+  const { error } = await sb().auth.updateUser({ password });
+  if (error) throw new Error(friendly(error));
+}
+
+export async function signOut() {
+  await sb().auth.signOut();
+  sessionPromise = null;
+  watching = null;
 }
 
 /**
@@ -95,14 +125,6 @@ export async function finishEmailLink() {
   await sb().auth.getSession();
   sessionPromise = null;
   return params.get('error_description') || '';
-}
-
-export async function verifyLoginCode(email, code) {
-  const { data, error } = await sb().auth.verifyOtp({ email, token: code, type: codeType });
-  if (error) throw new Error(error.message);
-  sessionPromise = Promise.resolve(data.user);
-  watching = null;
-  return data.user;
 }
 
 /** Correo con el que se entró en este dispositivo, o '' si es una sesión anónima. */

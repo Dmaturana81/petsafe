@@ -47,7 +47,7 @@ async function claim(el, { refresh }) {
   el.innerHTML = `
     <div class="card">
       <h1>Administrador 🔐</h1>
-      <p>Entra con tu correo de administrador. Te enviaremos un enlace para confirmar que es tuyo; así eres administrador en cualquier dispositivo.</p>
+      <p>Entra con tu correo y clave de administrador; así lo eres en cualquier dispositivo. Si aún no tienes clave, créala en Perfil → Tu cuenta, o toca "Olvidé mi contraseña".</p>
       <div id="email-login"></div>
     </div>
     <div class="card" id="first-time" hidden>

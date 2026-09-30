@@ -1,4 +1,4 @@
-import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, enablePush, loginEmail, CLOUD } from '../data.js';
+import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, enablePush, loginEmail, createAccount, setPassword, signOut, CLOUD } from '../data.js';
 import { mountEmailLogin } from './login-email.js';
 import { askPermission, notificationsSupported } from '../notify.js';
 import { esc, toast, go, isComplete } from '../ui.js';
@@ -15,8 +15,8 @@ export default async function profile(el, _params, { user, refresh }) {
   el.innerHTML = `
     ${CLOUD && !user ? `
       <div class="card">
-        <h2>¿Ya usas Kiltrazo en otro dispositivo?</h2>
-        <details><summary class="btn ghost">Entrar con mi correo</summary><div id="email-login"></div></details>
+        <h2>¿Ya tienes cuenta?</h2>
+        <details><summary class="btn ghost">Entrar con mi correo y clave</summary><div id="email-login"></div></details>
       </div>` : ''}
     <div class="card">
       <h1>${user ? 'Tu perfil' : 'Bienvenido a Kiltrazo 🐾'}</h1>
@@ -35,6 +35,9 @@ export default async function profile(el, _params, { user, refresh }) {
         <label>Teléfono (WhatsApp)<input name="phone" type="tel" required placeholder="+56 9 1234 5678" value="${esc(user?.phone)}" autocomplete="tel"></label>
         <label>Correo<input name="email" type="email" required value="${esc(user?.email)}" autocomplete="email"></label>
         <label>Dirección<input name="address" required placeholder="Calle, número, comuna" value="${esc(user?.address)}" autocomplete="street-address"></label>
+        ${CLOUD && !user ? `
+          <label>Crea una clave<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+          <p class="muted small">Con tu correo y esta clave entras desde cualquier celular o computador.</p>` : ''}
         <p class="muted small">Tu nombre y teléfono solo se comparten con el dueño de una mascota que encuentres. El correo y la dirección solo los ve el administrador de Kiltrazo.</p>
         <button class="btn primary big">${user ? 'Guardar' : 'Comenzar'}</button>
         ${saved ? '<button type="button" class="btn ghost" id="cancel-profile">Cancelar</button>' : ''}
@@ -94,11 +97,23 @@ export default async function profile(el, _params, { user, refresh }) {
 
       ${CLOUD ? `
         <div class="card">
-          <h2>Tu cuenta en otros dispositivos</h2>
+          <h2>Tu cuenta</h2>
           ${email
-            ? `<p>✅ Entraste con <strong>${esc(email)}</strong>. En otro celular o computador, entra con el mismo correo y verás tus datos y mascotas.</p>`
-            : `<p>Confirma tu correo para usar tu cuenta en otro celular o computador. Tus datos y mascotas de este dispositivo se mantienen.</p>
-               <details><summary class="btn ghost">Entrar con mi correo</summary><div id="email-login"></div></details>`}
+            ? `<p>✅ Entraste con <strong>${esc(email)}</strong>. En otro celular o computador, entra con tu correo y clave y verás tus datos y mascotas.</p>
+               <details><summary class="btn ghost">Cambiar mi clave</summary>
+                 <form class="form" id="new-pass">
+                   <label>Clave nueva<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+                   <button class="btn primary">Guardar clave</button>
+                 </form>
+               </details>
+               <button class="btn ghost" id="logout">Cerrar sesión</button>`
+            : `<p>Crea una clave para entrar a tu cuenta desde otro celular o computador. Tus datos y mascotas se mantienen.</p>
+               <form class="form" id="make-account">
+                 <label>Correo<input name="email" type="email" required value="${esc(user.email)}" autocomplete="email"></label>
+                 <label>Clave<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+                 <button class="btn primary">Crear mi clave</button>
+               </form>
+               <details><summary class="btn ghost">Ya tengo cuenta: entrar</summary><div id="email-login"></div></details>`}
         </div>` : ''}
 
       <div class="card">
@@ -113,10 +128,36 @@ export default async function profile(el, _params, { user, refresh }) {
     e.preventDefault();
     const f = new FormData(e.target);
     const data = Object.fromEntries(['firstName', 'lastName', 'phone', 'email', 'address'].map((k) => [k, f.get(k).trim()]));
+    data.email = data.email.toLowerCase();
+    if (f.get('password') && !(await makeAccount(data.email, f.get('password'), e.target))) return;
     await saveUser({ id: user?.id, ...data, name: `${data.firstName} ${data.lastName}` });
     if (!user && (await askPermission()) === 'granted') await enablePush().catch(() => {});
     toast('¡Listo!', 'ok');
     isComplete(user) ? refresh() : go('#/');
+  });
+
+  el.querySelector('#make-account')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    if (await makeAccount(f.get('email').trim().toLowerCase(), f.get('password'), e.target)) refresh();
+  });
+
+  el.querySelector('#new-pass')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await setPassword(new FormData(e.target).get('password'));
+      toast('Clave guardada', 'ok');
+      refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  });
+
+  el.querySelector('#logout')?.addEventListener('click', async () => {
+    if (!confirm('¿Cerrar sesión en este dispositivo? Para volver, entra con tu correo y clave.')) return;
+    await signOut();
+    go('#/perfil');
+    refresh();
   });
 
   const profileForm = el.querySelector('#profile');
@@ -208,6 +249,23 @@ export default async function profile(el, _params, { user, refresh }) {
     await saveUser({ name, phone });
     go('#/');
   });
+}
+
+// Crea la cuenta con correo y clave. Devuelve true si quedó lista para usarse.
+async function makeAccount(email, password, form) {
+  const btn = form.querySelector('button');
+  btn.disabled = true;
+  try {
+    if (!(await createAccount(email, password))) {
+      alert(`Te enviamos un correo a ${email}. Ábrelo y toca el enlace para confirmarlo; después podrás entrar con tu clave en cualquier dispositivo.`);
+    }
+    return true;
+  } catch (err) {
+    toast(err.message, 'bad');
+    return false;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // Por qué no hay notificaciones y cómo conseguirlas.

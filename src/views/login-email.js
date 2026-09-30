@@ -1,60 +1,47 @@
-import { sendLoginCode, verifyLoginCode } from '../data.js';
+import { signIn, resetPassword } from '../data.js';
 import { toast } from '../ui.js';
 
-// Entrar con correo: Supabase envía un correo con un enlace (o un código, si
-// se configura un correo propio). Así la misma persona es el mismo usuario en
-// cualquier dispositivo. `after` es la pantalla a la que se vuelve.
-export function mountEmailLogin(root, { button = 'Enviarme el enlace', after = '#/perfil', onDone }) {
+// Entrar con correo y clave: la misma persona es el mismo usuario en cualquier
+// dispositivo. "Olvidé mi contraseña" envía un correo con un enlace que vuelve
+// a la app para crear una clave nueva. `after` es la pantalla a la que se
+// vuelve desde ese enlace.
+export function mountEmailLogin(root, { after = '#/perfil', onDone }) {
   root.innerHTML = `
-    <form class="form" data-step="email">
-      <label>Tu correo<input name="email" type="email" required autocomplete="email"></label>
-      <button class="btn primary">${button}</button>
-    </form>
-    <form class="form" data-step="code" hidden>
-      <p class="note">📧 Te enviamos un correo a <strong data-to></strong>. Ábrelo <strong>en este mismo dispositivo</strong> y toca el enlace (dice "Sign in" o "Confirm"). Si no llega, revisa spam o espera unos minutos.</p>
-      <details><summary class="muted small">¿Tu correo trae un código en vez de un enlace?</summary>
-        <label>Código<input name="code" inputmode="numeric" autocomplete="one-time-code" required pattern="[0-9]{6,10}" maxlength="10"></label>
-        <button class="btn primary">Entrar</button>
-      </details>
-      <button type="button" class="btn ghost" data-back>Usar otro correo</button>
+    <form class="form">
+      <label>Correo<input name="email" type="email" required autocomplete="email"></label>
+      <label>Clave<input name="password" type="password" required minlength="6" autocomplete="current-password"></label>
+      <button class="btn primary">Entrar</button>
+      <button type="button" class="btn ghost small" data-forgot>Olvidé mi contraseña</button>
     </form>`;
-  const [emailForm, codeForm] = root.querySelectorAll('form');
-  let email = '';
+  const form = root.querySelector('form');
+  const email = () => form.email.value.trim().toLowerCase();
 
-  emailForm.addEventListener('submit', async (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn = emailForm.querySelector('button');
-    email = emailForm.email.value.trim().toLowerCase();
+    const btn = form.querySelector('button');
     btn.disabled = true;
     try {
-      try { localStorage.setItem('petsafe-after-login', after); } catch { /* sin almacenamiento */ }
-      await sendLoginCode(email);
-      emailForm.hidden = true;
-      codeForm.hidden = false;
-      codeForm.querySelector('[data-to]').textContent = email;
+      await signIn(email(), form.password.value);
+      toast('¡Listo, entraste!', 'ok');
+      onDone?.();
     } catch (err) {
-      toast(`No se pudo enviar el código: ${err.message}`, 'bad');
+      toast(err.message, 'bad');
     } finally {
       btn.disabled = false;
     }
   });
 
-  codeForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = codeForm.querySelector('button');
-    btn.disabled = true;
+  form.querySelector('[data-forgot]').addEventListener('click', async (e) => {
+    if (!form.email.reportValidity()) return;
+    e.target.disabled = true;
     try {
-      await verifyLoginCode(email, codeForm.code.value.trim());
-      toast('¡Listo, entraste!', 'ok');
-      onDone?.();
-    } catch {
-      toast('El código no es correcto o ya venció. Pide uno nuevo.', 'bad');
-      btn.disabled = false;
+      try { localStorage.setItem('petsafe-after-login', after); } catch { /* sin almacenamiento */ }
+      await resetPassword(email());
+      alert(`Te enviamos un correo a ${email()}. Ábrelo en este mismo dispositivo y toca el enlace para crear una clave nueva. Si no llega, revisa spam.`);
+    } catch (err) {
+      toast(err.message, 'bad');
+    } finally {
+      e.target.disabled = false;
     }
-  });
-
-  codeForm.querySelector('[data-back]').addEventListener('click', () => {
-    codeForm.hidden = true;
-    emailForm.hidden = false;
   });
 }

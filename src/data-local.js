@@ -324,7 +324,10 @@ export const pushConfigured = async () => false;
 export const savePushKey = async () => false;
 
 // Entrar con correo necesita el servidor (Supabase).
-export const sendLoginCode = async () => { throw new Error('Disponible solo con la app conectada a internet.'); };
-export const verifyLoginCode = sendLoginCode;
+export const createAccount = async () => { throw new Error('Disponible solo con la app conectada a internet.'); };
+export const signIn = createAccount;
+export const resetPassword = createAccount;
+export const setPassword = createAccount;
+export const signOut = async () => {};
 export const loginEmail = async () => '';
 export const finishEmailLink = async () => null;
