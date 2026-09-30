@@ -302,7 +302,7 @@ begin
   select r_id, s.kind, s.dino, s.mobilenet, s.basic from bio_samples(p_bio) s;
 
   create temp table if not exists _scores (pet_id uuid, score real, model text, nose real) on commit drop;
-  delete from _scores;
+  delete from _scores where true; -- Supabase (pg_safeupdate) exige WHERE
   insert into _scores select s.* from pet_scores(p_bio) s join pets p on p.id = s.pet_id
   where same_species(p.species, p_species);
 
@@ -368,7 +368,7 @@ begin
   if p_name is null then raise exception 'Mascota no encontrada'; end if;
 
   create temp table if not exists _found (found_id uuid, score real, model text, nose real) on commit drop;
-  delete from _found;
+  delete from _found where true;
   insert into _found select s.* from found_scores(p_pet) s
     join found_reports fr on fr.id = s.found_id
     where fr.pet_id is null or fr.pet_id = p_pet;
