@@ -25,6 +25,10 @@ export default async function register(el, _params, { user }) {
         <label>4. Nombre del dueño<input name="ownerName" required value="${esc(user.name)}"></label>
         <label>5. Enfermedades<textarea name="diseases" rows="2" required placeholder="Ej: alergia al pollo, epilepsia (o 'ninguna')"></textarea></label>
         <label>6. Vacunas<textarea name="vaccines" rows="2" required placeholder="Ej: antirrábica 2026, óctuple (o 'ninguna')"></textarea></label>
+        <label class="consent">
+          <input type="checkbox" name="train">
+          <span><strong>Ayúdanos a mejorar el reconocimiento de mascotas.</strong> Permito que Kiltrazo guarde las fotos de este escaneo solo para entrenar el reconocimiento, para que encuentre mejor a las mascotas perdidas. Solo las ve el administrador, no se publican y se borran si elimino a mi mascota. Es opcional.</span>
+        </label>
         <button class="btn primary big">Registrar</button>
       </form>
     </div>`;
@@ -66,6 +70,7 @@ export default async function register(el, _params, { user }) {
       vaccines: f.get('vaccines').trim(),
       photo: scan.photo,
       biometric: scan.biometric,
+      crops: f.get('train') ? scan.crops : null,
     });
     toast(`¡${pet.name} quedó registrada! 🎉`, 'ok');
     go('#/');

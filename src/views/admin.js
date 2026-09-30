@@ -1,7 +1,7 @@
 import {
   allPets, savePet, allFound, saveFound, deleteFound, listUsers, notify, notifyAll,
   latestSuccesses, deleteSuccess, commentsFor, deleteComment, addSuccess, markRecovered,
-  CLOUD, isAdmin, claimAdmin, adminExists, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
+  trainingPhotos, CLOUD, isAdmin, claimAdmin, adminExists, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
 } from '../data.js';
 import { generateVapidKeys } from '../notify.js';
 import { mountEmailLogin } from './login-email.js';
@@ -94,6 +94,7 @@ function login(el, { refresh }) {
 async function recon(panel) {
   const [pets, found] = await Promise.all([allPets(), allFound()]);
   const petName = (id) => pets.find((p) => p.id === id)?.name || '?';
+  const trainPets = pets.filter((p) => p.trainOk);
   const match = THRESHOLDS.dino, suggest = THRESHOLDS.dino - SUGGEST_MARGIN;
   const pct = (v) => `${Math.round(v * 100)}%`;
   const all = [...found].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -135,6 +136,13 @@ async function recon(panel) {
     </div>
 
     <div class="card">
+      <h2>Fotos para entrenar</h2>
+      <p><strong>${trainPets.length}</strong> mascotas con permiso · <strong>${trainPets.reduce((n, p) => n + (p.trainPhotos || 0), 0)}</strong> fotos guardadas.</p>
+      <p class="muted small">Se guardan solo cuando el dueño marca la casilla al registrar. Para entrenar bien hacen falta unas 100 mascotas.</p>
+      ${trainPets.length ? '<button class="btn secondary" id="train-zip">Descargar fotos (ZIP)</button>' : ''}
+    </div>
+
+    <div class="card">
       <h2>Cómo calibrar</h2>
       <ol class="small">
         <li>Registra a tu mascota. Después, en "Encontré una mascota", escanéala desde tu misma cuenta: queda como prueba con tu mascota.</li>
@@ -160,6 +168,20 @@ async function recon(panel) {
         </li>`;
       }).join('')}</ul>` : '<p class="muted">Todavía no hay escaneos de mascotas encontradas.</p>'}
     </div>`;
+
+  panel.querySelector('#train-zip')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = 'Preparando…';
+    try {
+      const files = await trainingPhotos();
+      download(`kiltrazo-entrenamiento-${day(new Date().toISOString())}.zip`, zip(files));
+    } catch (err) {
+      toast(`No se pudo descargar: ${err.message}`, 'bad');
+    } finally {
+      e.target.disabled = false;
+      e.target.textContent = 'Descargar fotos (ZIP)';
+    }
+  });
 }
 
 async function alertas(panel, { refresh }) {

@@ -57,6 +57,13 @@ create table if not exists public.pets (
 alter table public.pets add column if not exists species text not null default '';
 alter table public.pets add column if not exists breed text not null default '';
 
+-- Fotos del escaneo para entrenar el reconocimiento: solo si el dueño da permiso
+-- al registrar. Los recortes van al bucket privado "entrenamiento" (abajo), en
+-- una carpeta por mascota; train_photos cuenta cuántos se subieron.
+alter table public.pets add column if not exists train_ok boolean not null default false;
+alter table public.pets add column if not exists train_at timestamptz;
+alter table public.pets add column if not exists train_photos int not null default 0;
+
 -- Huellas biométricas: una fila por captura (y el promedio). Nadie las lee
 -- directamente; solo las funciones de búsqueda.
 create table if not exists public.pet_samples (
@@ -704,3 +711,22 @@ create trigger profiles_promos before insert or update on public.profiles
 alter table public.consent_log enable row level security;
 drop policy if exists "mis consentimientos o admin" on public.consent_log;
 create policy "mis consentimientos o admin" on public.consent_log for select using (user_id = auth.uid() or is_admin());
+
+-- Bucket privado con las fotos para entrenar. El dueño sube a la carpeta de su
+-- mascota solo si dio permiso; solo el administrador las ve y las descarga.
+insert into storage.buckets (id, name, public) values ('entrenamiento', 'entrenamiento', false)
+on conflict (id) do nothing;
+
+drop policy if exists "subir fotos de entrenamiento" on storage.objects;
+create policy "subir fotos de entrenamiento" on storage.objects for insert to authenticated with check (
+  bucket_id = 'entrenamiento' and exists (
+    select 1 from public.pets p
+    where p.id::text = (storage.foldername(objects.name))[1] and p.owner_id = auth.uid() and p.train_ok));
+drop policy if exists "ver fotos de entrenamiento" on storage.objects;
+create policy "ver fotos de entrenamiento" on storage.objects for select using (
+  bucket_id = 'entrenamiento' and (public.is_admin() or exists (
+    select 1 from public.pets p where p.id::text = (storage.foldername(objects.name))[1] and p.owner_id = auth.uid())));
+drop policy if exists "borrar fotos de entrenamiento" on storage.objects;
+create policy "borrar fotos de entrenamiento" on storage.objects for delete using (
+  bucket_id = 'entrenamiento' and (public.is_admin() or exists (
+    select 1 from public.pets p where p.id::text = (storage.foldername(objects.name))[1] and p.owner_id = auth.uid())));

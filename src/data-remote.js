@@ -156,11 +156,49 @@ export async function listUsers() {
 
 // ---------- Mascotas ----------
 
-export async function registerPet(_owner, { name, species = '', breed = '', ownerName, diseases, vaccines, photo, biometric }) {
+export async function registerPet(_owner, { name, species = '', breed = '', ownerName, diseases, vaccines, photo, biometric, crops }) {
   const id = await run(sb().rpc('register_pet', {
     p_name: name, p_species: species, p_breed: breed, p_owner_name: ownerName, p_diseases: diseases, p_vaccines: vaccines, p_photo: photo, p_bio: biometric,
   }));
+  // Si falla la subida de fotos, la mascota queda registrada igual.
+  if (crops) await saveTrainingPhotos(id, crops).catch((err) => console.warn('Fotos de entrenamiento', err));
   return { id, name };
+}
+
+// ---------- Fotos para entrenar (bucket privado "entrenamiento") ----------
+
+const TRAIN = 'entrenamiento';
+
+async function saveTrainingPhotos(petId, { face = [], nose = [] }) {
+  await run(sb().from('pets').update({ train_ok: true, train_at: new Date().toISOString() }).eq('id', petId));
+  const files = [...face.map((p, i) => [`cara-${i + 1}.jpg`, p]), ...nose.map((p, i) => [`nariz-${i + 1}.jpg`, p])];
+  let saved = 0;
+  for (const [file, dataUrl] of files) {
+    const blob = await (await fetch(dataUrl)).blob();
+    const { error } = await sb().storage.from(TRAIN).upload(`${petId}/${file}`, blob, { contentType: 'image/jpeg', upsert: true });
+    if (!error) saved++;
+  }
+  await run(sb().from('pets').update({ train_photos: saved }).eq('id', petId));
+}
+
+async function removeTrainingPhotos(petId) {
+  const { data } = await sb().storage.from(TRAIN).list(petId);
+  if (data?.length) await sb().storage.from(TRAIN).remove(data.map((f) => `${petId}/${f.name}`));
+}
+
+/** Solo administrador: todas las fotos para entrenar, como [{ name, data }]. */
+export async function trainingPhotos() {
+  const out = [];
+  const { data: folders, error } = await sb().storage.from(TRAIN).list('', { limit: 10000 });
+  if (error) throw error;
+  for (const folder of folders || []) {
+    const { data: files } = await sb().storage.from(TRAIN).list(folder.name, { limit: 100 });
+    for (const f of files || []) {
+      const { data: blob } = await sb().storage.from(TRAIN).download(`${folder.name}/${f.name}`);
+      if (blob) out.push({ name: `${folder.name}/${f.name}`, data: new Uint8Array(await blob.arrayBuffer()) });
+    }
+  }
+  return out;
 }
 
 export async function myPets(user) {
@@ -182,6 +220,8 @@ export async function savePet(pet) {
 }
 
 export async function removeMyPet(_user, petId) {
+  // Primero las fotos: después de borrar la mascota ya no se puede comprobar de quién son.
+  await removeTrainingPhotos(petId).catch((err) => console.warn('Fotos de entrenamiento', err));
   await run(sb().from('pets').delete().eq('id', petId));
   return true;
 }
