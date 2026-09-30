@@ -1,7 +1,7 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { currentUser, myNotifications, deliverPending, enablePush, finishEmailLink } from './data.js';
-import { PAW, esc, isComplete } from './ui.js';
+import { esc, isComplete } from './ui.js';
 import { unlockAudio, startAlarm, checkAlarms } from './alarm.js';
 
 import home from './views/home.js';
@@ -47,7 +47,7 @@ const app = document.getElementById('app');
 
 app.innerHTML = `
   <header class="topbar">
-    <a href="#/" class="brand"><span class="brand-paw">${PAW}</span> Kiltrazo</a>
+    <a href="#/" class="brand"><img src="brand/kiltrazo.svg" alt="Kiltrazo" class="brand-logo"></a>
     <a href="#/avisos" class="bell" aria-label="Avisos">🔔<span class="badge" hidden></span></a>
   </header>
   <main id="view"></main>
