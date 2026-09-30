@@ -23,7 +23,7 @@ export default async function admin(el, _params, ctx) {
     <div class="admin-head">
       <h1>Administrador</h1>
       <div class="tabs">
-        ${[['alertas', '🚨 Alertas'], ['mensajes', '📢 Mensajes'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
+        ${[['alertas', '🚨 Alertas'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
           .map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}
       </div>
     </div>
@@ -37,7 +37,7 @@ export default async function admin(el, _params, ctx) {
   );
 
   const panel = el.querySelector('#panel');
-  await ({ alertas, mensajes, casos, datos })[tab](panel, ctx);
+  await ({ alertas, mensajes, usuarios, casos, datos })[tab](panel, ctx);
 }
 
 // Con Supabase el permiso vive en el servidor: se entra con un correo de
@@ -267,6 +267,71 @@ function userSearch(input, list, users, row, bind) {
   });
 }
 
+// Lista de usuarios; al tocar uno se ven sus datos y sus mascotas.
+async function usuarios(panel, { refresh }) {
+  const [users, pets] = await Promise.all([listUsers(), allPets()]);
+  const petsOf = (id) => pets.filter((p) => p.ownerId === id);
+  const fullName = (u) => (u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.name) || 'Sin nombre';
+  const sorted = [...users].sort((a, b) => fullName(a).localeCompare(fullName(b), 'es'));
+  const orphans = pets.filter((p) => !users.some((u) => u.id === p.ownerId));
+
+  const petItem = (p) => `
+    <li>
+      ${p.photo ? `<img src="${esc(p.photo)}" alt="">` : ''}
+      <span><strong>${esc(p.name || 'Sin nombre')}</strong>
+        <small>${[describe(p), p.status === 'lost' ? '🔴 Perdida' : '🟢 En casa'].filter(Boolean).map(esc).join(' · ')}</small>
+        <small>Enfermedades: ${esc(p.diseases || 'No informó')}</small>
+        <small>Vacunas: ${esc(p.vaccines || 'No informó')}</small>
+        <small>Registrada ${timeAgo(p.createdAt)}</small></span>
+    </li>`;
+
+  panel.innerHTML = `
+    <div class="card">
+      <h2>Usuarios (${users.length}) · Mascotas (${pets.length})</h2>
+      <input class="search" type="search" id="uq" placeholder="🔍 Buscar usuario: nombre, teléfono o correo" autocomplete="off">
+      <ul class="user-list">${sorted.map((u) => {
+        const own = petsOf(u.id);
+        return `
+        <li data-u="${esc(u.id)}" data-text="${esc([fullName(u), u.phone, u.email, u.address].join(' '))}">
+          <button type="button" class="user-row" aria-expanded="false">
+            <span><strong>${esc(fullName(u))}</strong><small>${esc([u.email, u.phone].filter(Boolean).join(' · ') || 'Sin datos de contacto')}</small></span>
+            <span class="count">🐾 ${own.length}</span>
+          </button>
+          <div class="user-detail" hidden>
+            <p class="small">📞 ${esc(u.phone || 'No informó')}<br>✉️ ${esc(u.email || 'No informó')}<br>🏠 ${esc(u.address || 'No informó')}<br>Usuario desde ${esc(day(u.createdAt) || '—')}</p>
+            ${own.length ? `<ul class="pet-list">${own.map(petItem).join('')}</ul>` : '<p class="muted">Sin mascotas registradas.</p>'}
+            <button type="button" class="btn small" data-msg="${esc(u.id)}">Enviar mensaje</button>
+          </div>
+        </li>`;
+      }).join('') || '<li class="muted">Todavía no hay usuarios.</li>'}</ul>
+    </div>
+    ${orphans.length ? `
+      <div class="card">
+        <h2>Mascotas sin perfil de dueño (${orphans.length})</h2>
+        <ul class="pet-list">${orphans.map(petItem).join('')}</ul>
+      </div>` : ''}`;
+
+  panel.querySelectorAll('.user-row').forEach((b) => b.addEventListener('click', () => {
+    const open = b.getAttribute('aria-expanded') !== 'true';
+    b.setAttribute('aria-expanded', String(open));
+    b.nextElementSibling.hidden = !open;
+  }));
+  const norm = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  panel.querySelector('#uq').addEventListener('input', (e) => {
+    const q = norm(e.target.value.trim());
+    const qd = q.replace(/\D/g, '');
+    panel.querySelectorAll('[data-u]').forEach((li) => {
+      const t = norm(li.dataset.text);
+      li.hidden = !!q && !t.includes(q) && !(qd.length >= 3 && t.replace(/\D/g, '').includes(qd));
+    });
+  });
+  panel.querySelectorAll('[data-msg]').forEach((b) => b.addEventListener('click', () => {
+    sessionStorage.setItem('petsafe-admin-to', b.dataset.msg);
+    sessionStorage.setItem('petsafe-admin-tab', 'mensajes');
+    refresh();
+  }));
+}
+
 async function casos(panel, { refresh }) {
   const list = await latestSuccesses(50);
   const withComments = await Promise.all(list.map(async (s) => ({ ...s, comments: await commentsFor(s.id) })));
@@ -408,12 +473,18 @@ async function datos(panel, { refresh }) {
       'Nombres', 'Apellidos', 'Teléfono', 'Correo', 'Dirección', 'Usuario desde',
       'Mascota', 'Tipo', 'Raza', 'Nombre del dueño (registro)', 'Estado', 'Enfermedades', 'Vacunas', 'Mascota registrada', 'Foto',
     ];
-    const person = (u) => [u?.firstName || u?.name, u?.lastName, u?.phone, u?.email, u?.address, day(u?.createdAt)];
+    // Celdas vacías con texto, para distinguir "no lo llenó" de un error.
+    const or = (v, empty = 'No informó') => (v && String(v).trim()) || empty;
+    const person = (u) => (u
+      ? [u.firstName || u.name, u.lastName, u.phone, u.email, u.address, day(u.createdAt)]
+      : ['Sin perfil', '', '', '', '', '']);
     const rows = pets.map((p) => [
       ...person(users.find((u) => u.id === p.ownerId)),
-      p.name, SPECIES[p.species] || '', p.breed || '', p.ownerName, p.status === 'lost' ? 'Perdida' : 'En casa', p.diseases, p.vaccines, day(p.createdAt), photos.get(p.id)?.name || '',
+      or(p.name, 'Sin nombre'), SPECIES[p.species] || 'No informó', or(p.breed), or(p.ownerName), p.status === 'lost' ? 'Perdida' : 'En casa',
+      or(p.diseases), or(p.vaccines), day(p.createdAt), photos.get(p.id)?.name || 'Sin foto',
     ]);
-    for (const u of users) if (!pets.some((p) => p.ownerId === u.id)) rows.push([...person(u), '', '', '', '', '', '', '', '', '']);
+    // Personas que crearon perfil pero aún no registran mascotas: al final.
+    for (const u of users) if (!pets.some((p) => p.ownerId === u.id)) rows.push([...person(u), 'Sin mascota', '', '', '', '', '', '', '', '']);
     return toCsv([header, ...rows]);
   };
   const name = `kiltrazo-datos-${day(new Date().toISOString())}`;
