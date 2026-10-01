@@ -8,7 +8,7 @@ import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { pushLocal, subscribePush } from './notify.js';
 
 let client;
-function sb() {
+export function sb() {
   client ??= createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true } });
   return client;
 }

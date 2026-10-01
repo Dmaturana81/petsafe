@@ -72,6 +72,10 @@ async function render() {
     enablePush().catch((err) => console.warn('Push no disponible', err));
   }
   const hash = location.hash || '#/';
+  // Kiltrazo Clínica (para veterinarias): se carga aparte, con su propio menú.
+  const clinic = /^#\/clinica(\/|$)/.test(hash);
+  document.body.classList.toggle('clinic-mode', clinic);
+  if (clinic) return renderClinic(hash);
   let { view, params } = resolve(hash);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
   if (!isComplete(user) && view !== profile && view !== admin && view !== password && view !== privacy) view = profile;
@@ -89,6 +93,18 @@ async function render() {
     viewEl.innerHTML = `<div class="card"><h2>Ups…</h2><p>${esc(err.message)}</p></div>`;
   }
   await updateBadge(user);
+}
+
+async function renderClinic(hash) {
+  viewEl.className = '';
+  window.scrollTo(0, 0);
+  try {
+    const { default: clinicApp } = await import('./clinic/index.js');
+    await clinicApp(viewEl, hash.replace(/^#\/?/, ''), { refresh: render });
+  } catch (err) {
+    console.error(err);
+    viewEl.innerHTML = `<div class="card"><h2>Ups…</h2><p>${esc(err.message)}</p></div>`;
+  }
 }
 
 async function updateBadge(user) {
