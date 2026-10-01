@@ -50,6 +50,11 @@ La cámara y las notificaciones requieren HTTPS (o `localhost`). Al hacer push a
   elegir GPU y *Ejecutar todo*. Usa Oxford-IIIT Pet (cajas de cabezas) y Ultralytics YOLO11n (AGPL-3.0); al final
   descarga `pet-head.onnx` (entrada 320x320, salida `[1, 5, 2100]`), que va en `public/models/`. Al activarlo cambia
   el recorte de la cara, así que conviene registrar de nuevo las mascotas de prueba.
+- **Medir el acierto**: abrir
+  [`training/medir_reconocimiento.ipynb` en Colab](https://colab.research.google.com/github/andresmaturana-ui/petsafe/blob/main/training/medir_reconocimiento.ipynb)
+  y *Ejecutar todo* (no necesita GPU). Pasa unos 1.400 perros del set público DogFaceNet por el mismo detector,
+  el mismo DINOv2 y la misma comparación de la app, y entrega el porcentaje de acierto con el umbral actual y un
+  umbral sugerido.
 - **Datos**: con Supabase configurado (`VITE_SUPABASE_URL` y `VITE_SUPABASE_KEY` en `.env.production`) se
   comparten entre celulares (`src/data-remote.js`); si no, se guardan en el navegador (IndexedDB,
   `src/data-local.js`) y en *Perfil → Agregar otro usuario* se simula al dueño y a quien encuentra en un mismo celular.
