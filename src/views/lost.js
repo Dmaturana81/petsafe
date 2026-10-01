@@ -1,8 +1,11 @@
 import { myPets, reportLost, claimFound } from '../data.js';
-import { esc, go, changed, timeAgo, toast } from '../ui.js';
+import { esc, go, changed, timeAgo, toast, getLocation } from '../ui.js';
 import { describe } from '../breeds.js';
+import { pickPoint } from '../map.js';
+import { NEARBY_KM } from '../geo.js';
 
-// "Perdí mi mascota": activa el aviso y busca en los avisos de "encontré".
+// "Perdí mi mascota": el dueño marca dónde se perdió, avisamos a las personas
+// a 5 km y buscamos en los avisos de "encontré".
 export default async function lost(el, _params, { user }) {
   const pets = await myPets(user);
 
@@ -20,7 +23,7 @@ export default async function lost(el, _params, { user }) {
   el.innerHTML = `
     <div class="card">
       <h1>Perdí mi mascota</h1>
-      <p>¿Cuál de tus mascotas se perdió? Buscaremos entre las mascotas que otras personas encontraron.</p>
+      <p>¿Cuál de tus mascotas se perdió? Avisaremos a las personas cerca y buscaremos entre las mascotas que otras personas encontraron.</p>
       <div class="pick-list">
         ${pets.map((p) => `
           <button class="pick" data-id="${p.id}">
@@ -29,52 +32,94 @@ export default async function lost(el, _params, { user }) {
           </button>`).join('')}
       </div>
     </div>
+    <div id="where"></div>
     <div id="result"></div>`;
 
+  // Paso 2: dónde se perdió. Si el aviso ya estaba activo con su punto, se busca directo.
   el.querySelectorAll('.pick').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const pet = pets.find((p) => p.id === btn.dataset.id);
-      const result = el.querySelector('#result');
-      result.innerHTML = `<div class="card center"><div class="spinner"></div><p>Buscando a ${esc(pet.name)}…</p></div>`;
-      result.scrollIntoView({ behavior: 'smooth' });
-      let res;
-      try {
-        res = await reportLost(pet);
-      } catch (err) {
-        result.innerHTML = `<div class="card center"><h2>No se pudo activar el aviso</h2><p>${esc(err.message)}</p><p class="muted">Revisa tu conexión e inténtalo de nuevo.</p></div>`;
-        return;
+      el.querySelectorAll('.pick').forEach((b) => b.classList.toggle('selected', b === btn));
+      el.querySelector('#result').innerHTML = '';
+      const where = el.querySelector('#where');
+      if (pet.status === 'lost' && pet.lostLat != null) {
+        where.innerHTML = '';
+        return activate(pet, null);
       }
-      changed();
-      if (res.match) return go(`#/encontrada/${res.match.id}`);
-      result.innerHTML = `
-        <div class="card center">
-          <div class="empty-emoji">📣</div>
-          <h2>Aviso activo para ${esc(pet.name)}</h2>
-          <p>${res.suggestions.length ? 'No hay una coincidencia segura, pero alguien encontró mascotas parecidas. ¿Es alguna de estas?' : 'Todavía nadie la ha escaneado. Te enviaremos una notificación apenas alguien la encuentre.'}</p>
-        </div>
-        ${res.suggestions.length ? `
-          <div class="card">
-            <h2>¿Es ${esc(pet.name)}?</h2>
-            <ul class="pet-list suggestions">
-              ${res.suggestions.map((f) => `
-                <li><img src="${esc(f.photo)}" alt=""><span><strong>Encontrada ${timeAgo(f.createdAt)}</strong><small>Parecido ${Math.round(f.score * 100)}%</small></span>
-                <button class="btn small primary" data-claim="${esc(f.id)}">¡Es ${esc(pet.name)}!</button></li>`).join('')}
-            </ul>
-            <p class="muted small">Si es tu mascota, verás dónde está y el contacto de quien la encontró.</p>
-          </div>` : ''}
-        <a class="btn secondary" href="#/">Volver al inicio</a>`;
-      result.querySelectorAll('[data-claim]').forEach((b) =>
-        b.addEventListener('click', async () => {
-          b.disabled = true;
-          try {
-            await claimFound(pet, b.dataset.claim);
-            go(`#/encontrada/${b.dataset.claim}`);
-          } catch (err) {
-            toast(err.message);
-            b.disabled = false;
-          }
-        }),
-      );
+      let point = null;
+      where.innerHTML = `
+        <div class="card">
+          <h2>¿Dónde se perdió ${esc(pet.name)}?</h2>
+          <p class="muted">Usamos tu ubicación; toca el mapa para marcar dónde la viste por última vez.</p>
+          <div class="map" id="lostmap"></div>
+          <p class="note">📣 Avisaremos a las personas de Kiltrazo que estén a ${NEARBY_KM} km o menos de este punto. Verán su foto, su nombre y la zona aproximada, nunca tus datos.</p>
+          <button class="btn primary big" data-send>Avisar a los vecinos</button>
+          <button class="btn ghost" data-skip>Seguir sin avisar cerca</button>
+        </div>`;
+      where.scrollIntoView({ behavior: 'smooth' });
+      const picker = pickPoint(where.querySelector('#lostmap'), null, (p) => (point = p));
+      getLocation().then((loc) => loc && !point && picker.set(loc));
+      where.querySelector('[data-send]').addEventListener('click', () => {
+        if (!point) return alert('Marca en el mapa dónde se perdió');
+        where.innerHTML = '';
+        activate(pet, point);
+      });
+      where.querySelector('[data-skip]').addEventListener('click', () => {
+        where.innerHTML = '';
+        activate(pet, null);
+      });
     }),
   );
+
+  async function activate(pet, point) {
+    const result = el.querySelector('#result');
+    result.innerHTML = `<div class="card center"><div class="spinner"></div><p>${point ? 'Avisando a los vecinos y buscando' : 'Buscando'} a ${esc(pet.name)}…</p></div>`;
+    result.scrollIntoView({ behavior: 'smooth' });
+    let res;
+    try {
+      res = await reportLost(pet, point);
+    } catch (err) {
+      result.innerHTML = `<div class="card center"><h2>No se pudo activar el aviso</h2><p>${esc(err.message)}</p><p class="muted">Revisa tu conexión e inténtalo de nuevo.</p></div>`;
+      return;
+    }
+    changed();
+    if (res.match) return go(`#/encontrada/${res.match.id}`);
+    result.innerHTML = `
+      <div class="card center">
+        <div class="empty-emoji">📣</div>
+        <h2>Aviso activo para ${esc(pet.name)}</h2>
+        ${neighbors(res.notified)}
+        <p>${res.suggestions.length ? 'No hay una coincidencia segura, pero alguien encontró mascotas parecidas. ¿Es alguna de estas?' : 'Todavía nadie la ha escaneado. Te enviaremos una notificación apenas alguien la encuentre.'}</p>
+      </div>
+      ${res.suggestions.length ? `
+        <div class="card">
+          <h2>¿Es ${esc(pet.name)}?</h2>
+          <ul class="pet-list suggestions">
+            ${res.suggestions.map((f) => `
+              <li><img src="${esc(f.photo)}" alt=""><span><strong>Encontrada ${timeAgo(f.createdAt)}</strong><small>Parecido ${Math.round(f.score * 100)}%</small></span>
+              <button class="btn small primary" data-claim="${esc(f.id)}">¡Es ${esc(pet.name)}!</button></li>`).join('')}
+          </ul>
+          <p class="muted small">Si es tu mascota, verás dónde está y el contacto de quien la encontró.</p>
+        </div>` : ''}
+      <a class="btn secondary" href="#/">Volver al inicio</a>`;
+    result.querySelectorAll('[data-claim]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          await claimFound(pet, b.dataset.claim);
+          go(`#/encontrada/${b.dataset.claim}`);
+        } catch (err) {
+          toast(err.message);
+          b.disabled = false;
+        }
+      }),
+    );
+  }
+}
+
+// Cuántas personas cerca recibieron el aviso.
+function neighbors(n) {
+  if (n == null) return '';
+  if (!n) return `<p class="note">Por ahora nadie a ${NEARBY_KM} km activó los avisos cerca. Si alguien la escanea, igual te avisamos.</p>`;
+  return `<p class="scan-ok">📣 Avisamos a ${n} persona${n === 1 ? '' : 's'} a ${NEARBY_KM} km o menos.</p>`;
 }

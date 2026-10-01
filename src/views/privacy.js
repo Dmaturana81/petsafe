@@ -25,7 +25,7 @@ export default async function privacy(el) {
   el.innerHTML = `
     <div class="card legal">
       <h1>Política de privacidad</h1>
-      <p class="muted small">Vigente desde el 30 de septiembre de 2026.</p>
+      <p class="muted small">Vigente desde el 1 de octubre de 2026.</p>
 
       <h2>Quién es responsable</h2>
       <p>El administrador de Kiltrazo es responsable de tus datos. Puedes escribirle desde la app en Perfil → "¿Necesitas ayuda?".</p>
@@ -35,12 +35,15 @@ export default async function privacy(el) {
         <li>Tuyos: nombres, apellidos, teléfono, correo y dirección.</li>
         <li>De tu mascota: nombre, tipo, raza, vacunas, enfermedades, fotos y la huella biométrica de su cara y nariz.</li>
         <li>De los avisos: la ubicación que entregas al reportar una mascota perdida o encontrada.</li>
+        <li>Solo si activas los avisos de mascotas perdidas cerca: tu zona aproximada (redondeada a unos 1 km), nunca tu ubicación exacta.</li>
       </ul>
 
       <h2>Para qué los usamos</h2>
       <ul>
         <li>Para reconocer a tu mascota y avisarte si alguien la encuentra.</li>
         <li>Para que el dueño de una mascota que encontraste pueda contactarte.</li>
+        <li>Si reportas tu mascota como perdida y marcas dónde se perdió, para avisar a las personas que estén a 5 km o menos. Ellas ven su foto, su nombre y la zona aproximada, nunca tus datos.</li>
+        <li>Solo si lo activaste: tu zona aproximada, para avisarte de mascotas perdidas a 5 km o menos. Nadie más la ve (ni el administrador) y se borra al desactivarlo en tu perfil.</li>
         <li>Solo si lo permitiste al registrar a tu mascota: para mejorar el reconocimiento de mascotas con las fotos de su escaneo. Esas fotos solo las ve el administrador y se borran si eliminas a tu mascota.</li>
         <li>Solo si marcaste la casilla: para enviarte ofertas y novedades útiles para tu mascota. Puedes darte de baja cuando quieras desde tu perfil, y eso no cambia nada más en la app.</li>
       </ul>

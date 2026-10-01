@@ -226,9 +226,30 @@ export async function removeMyPet(_user, petId) {
   return true;
 }
 
-export async function reportLost(pet) {
-  const r = await run(sb().rpc('report_lost', { p_pet: pet.id }));
-  return { match: r.id ? { id: r.id } : null, suggestions: rows(r.suggestions) };
+export async function reportLost(pet, point = null) {
+  const r = await run(sb().rpc('report_lost', { p_pet: pet.id, p_lat: point?.lat ?? null, p_lng: point?.lng ?? null }));
+  return { match: r.id ? { id: r.id } : null, suggestions: rows(r.suggestions), notified: r.notified };
+}
+
+/** Lo que ve quien recibió el aviso de mascota perdida (sin datos del dueño). */
+export async function lostAlert(petId) {
+  return camel(await run(sb().rpc('lost_alert', { p_pet: petId })));
+}
+
+// ---------- Avisos de mascotas perdidas cerca ----------
+// La base guarda solo la zona redondeada (~1 km), ver set_my_area.
+
+export async function myArea(user) {
+  if (!user) return null;
+  return camel(await run(sb().from('user_areas').select('*').eq('user_id', user.id).maybeSingle()));
+}
+
+export async function setMyArea(_user, { lat, lng }) {
+  return run(sb().rpc('set_my_area', { p_lat: lat, p_lng: lng }));
+}
+
+export async function clearMyArea() {
+  return run(sb().rpc('clear_my_area'));
 }
 
 /** El dueño reconoce a su mascota en un aviso sugerido. */

@@ -3,11 +3,13 @@ import { registerSW } from 'virtual:pwa-register';
 import { currentUser, myNotifications, deliverPending, enablePush, finishEmailLink } from './data.js';
 import { esc, isComplete } from './ui.js';
 import { unlockAudio, startAlarm, checkAlarms } from './alarm.js';
+import { refreshArea } from './nearby.js';
 
 import home from './views/home.js';
 import profile from './views/profile.js';
 import register from './views/register.js';
 import lost from './views/lost.js';
+import lostAlert from './views/lost-alert.js';
 import found from './views/found.js';
 import match from './views/match.js';
 import recovered from './views/recovered.js';
@@ -25,6 +27,7 @@ const routes = [
   ['registrar', register],
   ['perdi', lost],
   ['encontre', found],
+  ['perdida/:id', lostAlert],
   ['encontrada/:id', match],
   ['recuperada', recovered],
   ['caso/:id', success],
@@ -70,6 +73,7 @@ async function render() {
   if (user && !pushTried) {
     pushTried = true;
     enablePush().catch((err) => console.warn('Push no disponible', err));
+    refreshArea(user).catch((err) => console.warn('Zona no actualizada', err));
   }
   const hash = location.hash || '#/';
   // Kiltrazo Clínica (para veterinarias): se carga aparte, con su propio menú.
