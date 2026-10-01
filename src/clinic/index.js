@@ -4,7 +4,7 @@
 
 import './clinic.css';
 import { esc } from '../ui.js';
-import { session, myClinics, members, activeClinicId, setActiveClinic, listAppointments, dueVaccines, runReminders, today } from './data.js';
+import { session, myClinics, members, activeClinicId, setActiveClinic, listAppointments, dueVaccines, runReminders, pendingRequests, today } from './data.js';
 import { ROLES } from './ui.js';
 import start from './views/start.js';
 import agenda, { waiting } from './views/agenda.js';
@@ -12,11 +12,14 @@ import patients, { patientForm, linkForm } from './views/patients.js';
 import patient from './views/patient.js';
 import vaccines from './views/vaccines.js';
 import team from './views/team.js';
+import requests, { homeVisits } from './views/requests.js';
 
 const ROUTES = [
   ['', agenda, 'agenda'],
   ['agenda/:day', agenda, 'agenda'],
   ['sala', waiting, 'sala'],
+  ['solicitudes', requests, 'solicitudes'],
+  ['domicilio', homeVisits, 'domicilio'],
   ['pacientes', patients, 'pacientes'],
   ['pacientes/nuevo', patientForm, 'pacientes'],
   ['vincular', linkForm, 'pacientes'],
@@ -57,14 +60,16 @@ export default async function clinicApp(el, path, { refresh }) {
     runReminders().catch((err) => console.warn('Recordatorios', err));
   }
 
-  const [team, todayList, due] = await Promise.all([
+  const [team, todayList, due, asked] = await Promise.all([
     members(clinic.id),
     listAppointments(clinic.id, today()),
     dueVaccines(clinic.id, 14),
+    pendingRequests(clinic.id),
   ]);
   const me = team.find((m) => m.userId === s.user.id) || { userId: s.user.id, name: '', role: clinic.role };
   const { view, section, params } = resolve(sub);
-  const pending = todayList.filter((a) => a.status === 'agendada' || a.status === 'en_sala' || a.status === 'en_atencion').length;
+  const pending = todayList.filter((a) => ['agendada', 'en_camino', 'en_sala', 'en_atencion'].includes(a.status)).length;
+  const homeToday = todayList.filter((a) => a.place === 'domicilio' && ['agendada', 'en_camino', 'en_atencion'].includes(a.status)).length;
   const inRoom = todayList.filter((a) => a.status === 'en_sala').length;
 
   const link = (key, href, label, badge = 0, hot = false) =>
@@ -80,6 +85,8 @@ export default async function clinicApp(el, path, { refresh }) {
           : `<div class="ck-clinic">${esc(clinic.name)}</div>`}
         <nav class="ck-navs">
           ${link('agenda', '#/clinica', 'Agenda de hoy', pending, true)}
+          ${link('solicitudes', '#/clinica/solicitudes', 'Solicitudes de hora', asked.length, true)}
+          ${clinic.homeVisits ? link('domicilio', '#/clinica/domicilio', 'A domicilio', homeToday) : ''}
           ${link('pacientes', '#/clinica/pacientes', 'Pacientes')}
           ${link('sala', '#/clinica/sala', 'Sala de espera', inRoom)}
           ${link('vacunas', '#/clinica/vacunas', 'Vacunas por vencer', due.length)}

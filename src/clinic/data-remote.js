@@ -68,8 +68,11 @@ export async function removeMember(clinicId, userId) {
   return run(sb().from('clinic_members').delete().eq('clinic_id', clinicId).eq('user_id', userId));
 }
 
-export async function saveClinic({ id, name, address, phone }) {
-  return run(sb().from('clinics').update({ name, address, phone }).eq('id', id));
+export async function saveClinic({ id, name, address, phone, homeVisits, lat = null, lng = null, onMap, emergencies, hours = '', travelMinutes = 30 }) {
+  return run(sb().from('clinics').update({
+    name, address, phone, home_visits: Boolean(homeVisits), lat, lng, on_map: Boolean(onMap), emergencies: Boolean(emergencies), hours,
+    travel_minutes: travelMinutes,
+  }).eq('id', id));
 }
 
 export async function createClinic({ name, address, phone, memberName, role }) {
@@ -96,7 +99,7 @@ export async function createPetCode(petId) {
 
 export async function petHealth(petId) {
   const r = await run(sb().rpc('pet_health', { p_pet: petId }));
-  return { clinics: r.clinics, vaccines: r.vaccines.map(camel), appointments: r.appointments.map(camel) };
+  return { clinics: r.clinics.map(camel), vaccines: r.vaccines.map(camel), appointments: r.appointments.map(camel) };
 }
 
 export async function unlinkPet(petId, clinicId) {
@@ -124,4 +127,63 @@ export async function fileUrls(files) {
 
 export async function removeObject(path) {
   await sb().storage.from(BUCKET).remove([path]);
+}
+
+// ---------- Horas pedidas por el tutor y avisos ----------
+
+export async function requestAppointment({ petId, clinicId, place, service, startsAt, address = '', lat = null, lng = null, notes = '' }) {
+  return run(sb().rpc('request_appointment', {
+    p_pet: petId, p_clinic: clinicId, p_place: place, p_service: service, p_starts_at: startsAt,
+    p_address: address, p_lat: lat, p_lng: lng, p_notes: notes,
+  }));
+}
+
+export async function cancelMyAppointment(id) {
+  return run(sb().rpc('cancel_my_appointment', { p_appt: id }));
+}
+
+/** Avisa al tutor: 'confirmada', 'rechazada', 'en_camino' o 'llego'. */
+export async function notifyAppointment(id, kind) {
+  return run(sb().rpc('appointment_notify', { p_appt: id, p_kind: kind }));
+}
+
+// ---------- Traspaso de una mascota de la clínica a la app del tutor ----------
+
+export async function createTransferCode(patientId) {
+  return run(sb().rpc('create_transfer_code', { p_patient: patientId }));
+}
+
+export async function transferInfo(code) {
+  return camel(await run(sb().rpc('transfer_info', { p_code: code })));
+}
+
+/** Crea la mascota del tutor con el escaneo que hizo la clínica. */
+export async function acceptTransfer(code) {
+  return run(sb().rpc('accept_transfer', { p_code: code }));
+}
+
+export async function claimTransfer(code, petId) {
+  return run(sb().rpc('claim_transfer', { p_code: code, p_pet: petId }));
+}
+
+// ---------- Mapa de clínicas (urgencias) ----------
+
+export async function nearbyClinics(lat = null, lng = null, km = 50) {
+  return (await run(sb().rpc('nearby_clinics', { p_lat: lat, p_lng: lng, p_km: km }))).map(camel);
+}
+
+// ---------- Días de trabajo y horas libres ----------
+
+export async function saveSchedule(clinicId, userId, schedule) {
+  return run(sb().rpc('save_schedule', { p_clinic: clinicId, p_user: userId, p_schedule: schedule }));
+}
+
+/** Días que el equipo trabaja en otras clínicas: [{ userId, dow, fromHm, toHm, clinic }]. */
+export async function busyElsewhere(clinicId) {
+  return (await run(sb().rpc('busy_elsewhere', { p_clinic: clinicId }))).map(camel);
+}
+
+/** { configured, days: [{ day, times }] } */
+export async function availableSlots(clinicId, place, days = 14) {
+  return run(sb().rpc('available_slots', { p_clinic: clinicId, p_place: place, p_days: days }));
 }

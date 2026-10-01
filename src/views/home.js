@@ -36,6 +36,12 @@ export default async function home(el, _params, { user }) {
 
     <div id="nearby"></div>
 
+    <a class="register-cta clinics-cta" href="#/clinicas">
+      <span>🏥</span>
+      <span><strong>Clínicas cercanas</strong><small>Para una urgencia: llama o ve al tiro</small></span>
+      <span class="chev">›</span>
+    </a>
+
     <a class="register-cta" href="#/registrar">
       <span>🐾</span>
       <span><strong>Registrar mascota</strong><small>Gratis · escaneo facial en segundos</small></span>

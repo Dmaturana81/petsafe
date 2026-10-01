@@ -3,14 +3,15 @@
 // tocar la de la app.
 
 import * as app from '../data-local.js';
+import { kmBetween } from '../geo.js';
 
 const TABLES = ['clinics', 'clinic_members', 'clinic_invites', 'clinic_patients', 'clinic_visits', 'clinic_vaccines',
-  'clinic_files', 'clinic_appointments', 'pet_codes', 'clinic_blobs'];
+  'clinic_files', 'clinic_appointments', 'pet_codes', 'clinic_blobs', 'clinic_transfers'];
 
 let dbPromise;
 function open() {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open('kiltrazo-clinica', 1);
+    const req = indexedDB.open('kiltrazo-clinica', 2);
     req.onupgradeneeded = () => {
       for (const t of TABLES) if (!req.result.objectStoreNames.contains(t)) req.result.createObjectStore(t, { keyPath: 'id' });
     };
@@ -92,7 +93,11 @@ export async function removeMember(clinicId, userId) {
 }
 
 export async function saveClinic(c) {
-  return update('clinics', c.id, { name: c.name, address: c.address, phone: c.phone });
+  return update('clinics', c.id, {
+    name: c.name, address: c.address, phone: c.phone, homeVisits: Boolean(c.homeVisits),
+    lat: c.lat ?? null, lng: c.lng ?? null, onMap: Boolean(c.onMap), emergencies: Boolean(c.emergencies), hours: c.hours || '',
+    travelMinutes: c.travelMinutes ?? 30,
+  });
 }
 
 async function addMember(clinicId, userId, name, role, isAdmin = false) {
@@ -164,9 +169,10 @@ export async function petHealth(petId) {
     vaccines: (await all('clinic_vaccines')).filter((v) => ids.has(v.patientId))
       .sort((a, b) => b.appliedOn.localeCompare(a.appliedOn))
       .map((v) => ({ kind: v.kind, name: v.name, appliedOn: v.appliedOn, nextDue: v.nextDue, clinic: name(v.clinicId) })),
-    appointments: (await all('clinic_appointments')).filter((a) => ids.has(a.patientId) && a.status === 'agendada' && a.startsAt >= now())
+    appointments: (await all('clinic_appointments'))
+      .filter((a) => ids.has(a.patientId) && ['solicitada', 'agendada', 'en_camino'].includes(a.status) && a.startsAt >= new Date(Date.now() - 3 * 3600000).toISOString())
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-      .map((a) => ({ startsAt: a.startsAt, service: a.service, clinic: name(a.clinicId) })),
+      .map((a) => ({ id: a.id, startsAt: a.startsAt, service: a.service, status: a.status, place: a.place || 'clinica', address: a.address || '', clinic: name(a.clinicId) })),
   };
 }
 
@@ -209,3 +215,206 @@ export async function fileUrls(files) {
 }
 
 export const removeObject = (path) => del('clinic_blobs', path);
+
+// ---------- Horas pedidas por el tutor y avisos ----------
+
+const SERVICE = { consulta: 'Consulta', control: 'Control', vacuna: 'Vacuna', cirugia: 'Cirugía', peluqueria: 'Peluquería' };
+const when = (iso) => {
+  const d = new Date(iso);
+  const z = (n) => String(n).padStart(2, '0');
+  return `${z(d.getDate())}-${z(d.getMonth() + 1)} a las ${z(d.getHours())}:${z(d.getMinutes())}`;
+};
+
+async function tellClinic(clinicId, title, body, url) {
+  for (const m of await list('clinic_members', { clinicId })) await app.notify(m.userId, { title, body, url });
+}
+
+export async function requestAppointment({ petId, clinicId, place, service, startsAt, address = '', lat = null, lng = null, notes = '' }) {
+  const me = await app.currentUser();
+  const pet = await app.getPet(petId);
+  const cp = (await list('clinic_patients', { clinicId, petId }))[0];
+  if (!cp || pet?.ownerId !== me.id) throw new Error('Primero comparte tu mascota con la clínica');
+  const clinic = await get('clinics', clinicId);
+  if (place === 'domicilio' && !clinic.homeVisits) throw new Error('Esta clínica no hace visitas a domicilio');
+  if (place === 'domicilio' && !address.trim()) throw new Error('Falta la dirección');
+  if (startsAt < now()) throw new Error('Elige una fecha futura');
+  let vetId = null;
+  if (await hasSchedule(clinicId, place)) {
+    vetId = await freeVet(clinicId, place, startsAt);
+    if (!vetId) throw new Error('Esa hora ya no está disponible. Elige otra.');
+  }
+  const a = await insert('clinic_appointments', {
+    clinicId, patientId: cp.id, patientName: cp.name, service, startsAt, status: 'solicitada', place, minutes: 30,
+    address: place === 'domicilio' ? address.trim() : '', lat: place === 'domicilio' ? lat : null, lng: place === 'domicilio' ? lng : null,
+    notes: notes.slice(0, 300), requestedBy: me.id, vetId,
+  });
+  if (place === 'domicilio') await update('clinic_patients', cp.id, { tutorAddress: address.trim() });
+  await tellClinic(clinicId, 'Nueva solicitud de hora 📅', `${cp.name} · ${SERVICE[service] || 'Hora'}${place === 'domicilio' ? ' a domicilio' : ''} · ${when(startsAt)}`, '#/clinica/solicitudes');
+  return a.id;
+}
+
+export async function cancelMyAppointment(id) {
+  const a = await get('clinic_appointments', id);
+  if (!a || !['solicitada', 'agendada'].includes(a.status)) throw new Error('Hora no encontrada');
+  await update('clinic_appointments', id, { status: 'cancelada' });
+  await tellClinic(a.clinicId, 'Hora cancelada por el tutor', `${a.patientName} · ${when(a.startsAt)}`, '#/clinica');
+  return true;
+}
+
+export async function notifyAppointment(id, kind) {
+  const a = await get('clinic_appointments', id);
+  const cp = a?.patientId && await get('clinic_patients', a.patientId);
+  if (!cp?.tutorUser) return false;
+  const c = await get('clinics', a.clinicId);
+  const msg = {
+    confirmada: [`Hora confirmada para ${cp.name} 📅`, `${SERVICE[a.service] || 'Hora'}${a.place === 'domicilio' ? ' a domicilio' : ''} el ${when(a.startsAt)} con ${c.name}.`],
+    rechazada: [`No pudimos confirmar la hora de ${cp.name}`, `${c.name} no tiene esa hora disponible.${c.phone ? ` Llama al ${c.phone} para buscar otra.` : ' Pide otra hora en Kiltrazo.'}`],
+    en_camino: ['La veterinaria va en camino 🚗', `${c.name} va hacia tu domicilio para atender a ${cp.name}.`],
+    llego: ['La veterinaria llegó 🏠', `${c.name} está en tu puerta para atender a ${cp.name}.`],
+  }[kind];
+  await app.notify(cp.tutorUser, { title: msg[0], body: msg[1], url: '#/perfil' });
+  return true;
+}
+
+// ---------- Traspaso de una mascota de la clínica a la app del tutor ----------
+
+export async function createTransferCode(patientId) {
+  const cp = await get('clinic_patients', patientId);
+  if (cp.petId) throw new Error('Esta mascota ya está en la app de su tutor');
+  for (const t of await list('clinic_transfers', { patientId })) await del('clinic_transfers', t.id);
+  const code = shortCode() + shortCode().slice(0, 2);
+  await put('clinic_transfers', { id: code, patientId, clinicId: cp.clinicId, createdAt: now() });
+  return code;
+}
+
+export async function transferInfo(code) {
+  const t = await get('clinic_transfers', code.trim().toUpperCase());
+  const cp = t && await get('clinic_patients', t.patientId);
+  if (!cp || cp.petId) return null;
+  return { clinic: (await get('clinics', t.clinicId))?.name, name: cp.name, species: cp.species, breed: cp.breed, photo: cp.photo, hasScan: Boolean(cp.scan) };
+}
+
+export async function acceptTransfer(code) {
+  const t = await get('clinic_transfers', code.trim().toUpperCase());
+  const cp = t && await get('clinic_patients', t.patientId);
+  if (!cp || cp.petId) throw new Error('El enlace ya se usó o venció. Pide uno nuevo a tu veterinaria.');
+  if (!cp.scan) throw new Error('La clínica no filmó su cara. Regístrala tú desde la app.');
+  const me = await app.currentUser();
+  const clinic = (await get('clinics', t.clinicId))?.name;
+  const pet = await app.registerPet(me, {
+    name: cp.name, species: cp.species || '', breed: cp.breed || '', ownerName: me.name || '',
+    diseases: cp.allergies || '', vaccines: `Las registra ${clinic}`, photo: cp.photo, biometric: cp.scan, crops: null,
+  });
+  await claimTransfer(code, pet.id);
+  return pet.id;
+}
+
+export async function claimTransfer(code, petId) {
+  const t = await get('clinic_transfers', code.trim().toUpperCase());
+  if (!t) throw new Error('El enlace ya se usó o venció. Pide uno nuevo a tu veterinaria.');
+  await del('clinic_transfers', t.id);
+  const me = await app.currentUser();
+  const cp = await get('clinic_patients', t.patientId);
+  await update('clinic_patients', cp.id, {
+    petId, tutorUser: me.id, tutorName: cp.tutorName || `${me.firstName || me.name} ${me.lastName || ''}`.trim(),
+    tutorPhone: cp.tutorPhone || me.phone || '', tutorEmail: cp.tutorEmail || me.email || '', tutorAddress: cp.tutorAddress || me.address || '',
+  });
+  return (await get('clinics', t.clinicId))?.name;
+}
+
+// ---------- Mapa de clínicas (urgencias) ----------
+
+export async function nearbyClinics(lat = null, lng = null, km = 50) {
+  const here = lat != null && lng != null ? { lat, lng } : null;
+  return (await all('clinics'))
+    .filter((c) => c.onMap && c.lat != null && c.lng != null)
+    .map((c) => ({
+      id: c.id, name: c.name, address: c.address, phone: c.phone, lat: c.lat, lng: c.lng,
+      emergencies: Boolean(c.emergencies), homeVisits: Boolean(c.homeVisits), hours: c.hours || '',
+      km: here ? Math.round(kmBetween(here, c) * 10) / 10 : null,
+    }))
+    .filter((c) => c.km == null || c.km <= km)
+    .sort((a, b) => (b.emergencies - a.emergencies) || ((a.km ?? 0) - (b.km ?? 0)) || a.name.localeCompare(b.name))
+    .slice(0, 100);
+}
+
+// ---------- Días de trabajo y horas libres (mismas reglas que supabase/schema.sql) ----------
+
+const hm = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const isoDow = (d) => String(d.getDay() || 7);
+
+async function vets(clinicId) {
+  return (await list('clinic_members', { clinicId })).filter((m) => m.role === 'vet');
+}
+
+async function hasSchedule(clinicId, place) {
+  return (await vets(clinicId)).some((m) => Object.values(m.schedule || {}).some((d) => d.place === place));
+}
+
+async function freeVet(clinicId, place, at, minutes = 30) {
+  const clinic = await get('clinics', clinicId);
+  const gap = place === 'domicilio' ? clinic.travelMinutes ?? 30 : 0;
+  const t = new Date(at);
+  const mins = t.getHours() * 60 + t.getMinutes();
+  const appts = (await all('clinic_appointments')).filter((a) => !['cancelada', 'no_vino'].includes(a.status));
+  for (const m of await vets(clinicId)) {
+    const d = m.schedule?.[isoDow(t)];
+    if (d?.place !== place || mins < hm(d.from) || mins + minutes > hm(d.to)) continue;
+    const busy = appts.some((a) => {
+      if (a.vetId !== m.userId) return false;
+      const g = a.place === 'domicilio' || place === 'domicilio' ? gap : 0;
+      const s = new Date(a.startsAt).getTime();
+      return s < t.getTime() + (minutes + g) * 60000 && s + ((a.minutes || 30) + g) * 60000 > t.getTime();
+    });
+    if (!busy) return m.userId;
+  }
+  return null;
+}
+
+export async function availableSlots(clinicId, place, days = 14) {
+  if (!(await hasSchedule(clinicId, place))) return { configured: false, days: [] };
+  const team = await vets(clinicId);
+  const out = [];
+  const z = (n) => String(n).padStart(2, '0');
+  for (let i = 0; i <= Math.min(days, 31); i++) {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + i);
+    const today = team.map((m) => m.schedule?.[isoDow(d)]).filter((x) => x?.place === place);
+    if (!today.length) continue;
+    const lo = Math.min(...today.map((x) => hm(x.from)));
+    const hi = Math.max(...today.map((x) => hm(x.to)));
+    const times = [];
+    for (let t = lo; t + 30 <= hi; t += 30) {
+      const at = new Date(d);
+      at.setHours(Math.floor(t / 60), t % 60, 0, 0);
+      if (at.getTime() > Date.now() + 3600000 && (await freeVet(clinicId, place, at.toISOString()))) times.push(`${z(Math.floor(t / 60))}:${z(t % 60)}`);
+    }
+    if (times.length) out.push({ day: `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`, times });
+  }
+  return { configured: true, days: out };
+}
+
+export async function saveSchedule(clinicId, userId, schedule) {
+  for (const [k, d] of Object.entries(schedule)) {
+    if (hm(d.from) >= hm(d.to)) throw new Error('Revisa el horario: la hora de término debe ser después de la de inicio');
+    for (const m of (await all('clinic_members')).filter((x) => x.userId === userId && x.clinicId !== clinicId)) {
+      const o = m.schedule?.[k];
+      if (o && hm(o.from) < hm(d.to) && hm(o.to) > hm(d.from)) throw new Error(`Ese horario se cruza con el que tiene en ${(await get('clinics', m.clinicId))?.name}`);
+    }
+  }
+  const m = await get('clinic_members', `${clinicId}:${userId}`);
+  await put('clinic_members', { ...m, schedule });
+  return true;
+}
+
+export async function busyElsewhere(clinicId) {
+  const me = await app.currentUser();
+  const ids = new Set((await list('clinic_members', { clinicId })).map((m) => m.userId));
+  const out = [];
+  for (const m of (await all('clinic_members')).filter((x) => ids.has(x.userId) && x.clinicId !== clinicId)) {
+    const name = m.userId === me.id ? (await get('clinics', m.clinicId))?.name : '';
+    for (const [dow, d] of Object.entries(m.schedule || {})) out.push({ userId: m.userId, dow, fromHm: d.from, toHm: d.to, clinic: name });
+  }
+  return out;
+}

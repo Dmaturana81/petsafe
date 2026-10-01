@@ -10,6 +10,8 @@ const B = CLOUD ? remote : local;
 export const {
   session, myClinics, members, removeMember, saveClinic, createClinic, joinClinic, createInvite,
   linkPet, createPetCode, petHealth, unlinkPet, runReminders, fileUrls,
+  requestAppointment, cancelMyAppointment, notifyAppointment, createTransferCode, transferInfo, claimTransfer, acceptTransfer,
+  nearbyClinics, saveSchedule, busyElsewhere, availableSlots,
 } = B;
 
 // ---------- Clínica activa (por si alguien trabaja en dos) ----------
@@ -106,6 +108,28 @@ export function listAppointments(clinicId, day) {
   return B.list('clinic_appointments', { clinicId }, { gte: { startsAt: start.toISOString() }, lt: { startsAt: end.toISOString() }, order: 'startsAt' });
 }
 export const saveAppointment = ({ id, ...a }) => (id ? B.update('clinic_appointments', id, a) : B.insert('clinic_appointments', a));
+
+/** Horas que pidieron los tutores y la clínica aún no confirma. */
+export const pendingRequests = (clinicId) => B.list('clinic_appointments', { clinicId, status: 'solicitada' }, { order: 'startsAt' });
+
+/** Visitas a domicilio desde `day` por `days` días que aún no terminan. */
+export async function upcomingHomeVisits(clinicId, day, days = 7) {
+  const start = new Date(`${day}T00:00:00`);
+  const end = new Date(start.getTime() + days * 86400000);
+  const rows = await B.list('clinic_appointments', { clinicId, place: 'domicilio' }, { gte: { startsAt: start.toISOString() }, lt: { startsAt: end.toISOString() }, order: 'startsAt' });
+  return rows.filter((a) => ['agendada', 'en_camino', 'en_atencion'].includes(a.status));
+}
+
+/** Enlaces para llegar al domicilio en Google Maps y Waze. */
+export function directions(a) {
+  const dest = a.lat != null && a.lng != null ? `${a.lat},${a.lng}` : a.address;
+  if (!dest) return null;
+  const q = encodeURIComponent(dest);
+  return {
+    google: `https://www.google.com/maps/dir/?api=1&destination=${q}`,
+    waze: a.lat != null && a.lng != null ? `https://waze.com/ul?ll=${q}&navigate=yes` : `https://waze.com/ul?q=${q}&navigate=yes`,
+  };
+}
 
 // ---------- Fechas ----------
 

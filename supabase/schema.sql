@@ -1156,16 +1156,18 @@ begin
     raise exception 'Mascota no encontrada';
   end if;
   return jsonb_build_object(
-    'clinics', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name, 'phone', c.phone, 'address', c.address))
+    'clinics', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name, 'phone', c.phone, 'address', c.address,
+        'home_visits', c.home_visits))
       from clinics c where c.id in (select clinic_id from clinic_patients where pet_id = p_pet)), '[]'::jsonb),
     'vaccines', coalesce((select jsonb_agg(jsonb_build_object('kind', v.kind, 'name', v.name, 'applied_on', v.applied_on,
         'next_due', v.next_due, 'clinic', c.name) order by v.applied_on desc)
       from clinic_vaccines v join clinic_patients cp on cp.id = v.patient_id join clinics c on c.id = v.clinic_id
       where cp.pet_id = p_pet), '[]'::jsonb),
-    'appointments', coalesce((select jsonb_agg(jsonb_build_object('starts_at', a.starts_at, 'service', a.service, 'clinic', c.name)
-        order by a.starts_at)
+    'appointments', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'starts_at', a.starts_at, 'service', a.service,
+        'status', a.status, 'place', a.place, 'address', a.address, 'clinic', c.name) order by a.starts_at)
       from clinic_appointments a join clinic_patients cp on cp.id = a.patient_id join clinics c on c.id = a.clinic_id
-      where cp.pet_id = p_pet and a.starts_at >= now() and a.status = 'agendada'), '[]'::jsonb));
+      where cp.pet_id = p_pet and a.starts_at >= now() - interval '3 hours'
+        and a.status in ('solicitada', 'agendada', 'en_camino')), '[]'::jsonb));
 end $$;
 
 -- Recordatorio en la app al tutor 7 días antes de cada próxima dosis (una
@@ -1256,3 +1258,339 @@ create policy "clínica ve exámenes" on storage.objects for select using (
 drop policy if exists "clínica borra exámenes" on storage.objects;
 create policy "clínica borra exámenes" on storage.objects for delete using (
   bucket_id = 'clinica' and public.is_clinic_folder((storage.foldername(objects.name))[1]));
+
+-- ==========================================================================
+-- ---------- Kiltrazo Clínica: horas pedidas por el tutor, domicilio y traspaso ----------
+
+-- La clínica indica si hace visitas a domicilio (el tutor solo ve esa opción si es así).
+alter table public.clinics add column if not exists home_visits boolean not null default false;
+-- Dirección del tutor, para las visitas a domicilio.
+alter table public.clinic_patients add column if not exists tutor_address text not null default '';
+-- Escaneo de la cara hecho en la clínica, para pasar la mascota al tutor sin volver a filmarla.
+alter table public.clinic_patients add column if not exists scan jsonb;
+
+-- Horas: en la clínica o a domicilio (con dirección y, si el tutor la compartió,
+-- su ubicación). 'solicitada' = la pidió el tutor y la clínica aún no confirma;
+-- 'en_camino' = el veterinario va hacia el domicilio.
+alter table public.clinic_appointments add column if not exists place text not null default 'clinica';
+alter table public.clinic_appointments add column if not exists address text not null default '';
+alter table public.clinic_appointments add column if not exists lat double precision;
+alter table public.clinic_appointments add column if not exists lng double precision;
+alter table public.clinic_appointments add column if not exists requested_by uuid references auth.users on delete set null;
+alter table public.clinic_appointments drop constraint if exists clinic_appointments_status_check;
+alter table public.clinic_appointments add constraint clinic_appointments_status_check
+  check (status in ('solicitada', 'agendada', 'en_camino', 'en_sala', 'en_atencion', 'atendida', 'no_vino', 'cancelada'));
+alter table public.clinic_appointments drop constraint if exists clinic_appointments_place_check;
+alter table public.clinic_appointments add constraint clinic_appointments_place_check check (place in ('clinica', 'domicilio'));
+
+-- Fecha y hora como se leen en Chile, para los avisos.
+create or replace function public.cl_when(t timestamptz) returns text
+language sql stable as $$
+  select to_char(t at time zone 'America/Santiago', 'DD-MM') || ' a las ' || to_char(t at time zone 'America/Santiago', 'HH24:MI');
+$$;
+
+create or replace function public.service_name(s text) returns text
+language sql immutable as $$
+  select case s when 'consulta' then 'Consulta' when 'control' then 'Control' when 'vacuna' then 'Vacuna'
+    when 'cirugia' then 'Cirugía' when 'peluqueria' then 'Peluquería' else 'Hora' end;
+$$;
+
+-- El tutor pide una hora para su mascota en una clínica con la que la compartió.
+create or replace function public.request_appointment(
+  p_pet uuid, p_clinic uuid, p_place text, p_service text, p_starts_at timestamptz,
+  p_address text default '', p_lat double precision default null, p_lng double precision default null, p_notes text default ''
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare cp clinic_patients; c clinics; a_id uuid; v_vet uuid;
+begin
+  select * into cp from clinic_patients
+  where clinic_id = p_clinic and pet_id = p_pet and pet_id in (select id from pets where owner_id = auth.uid());
+  if cp.id is null then raise exception 'Primero comparte tu mascota con la clínica'; end if;
+  select * into c from clinics where id = p_clinic;
+  if p_place not in ('clinica', 'domicilio') then raise exception 'Lugar no válido'; end if;
+  if p_place = 'domicilio' and not c.home_visits then raise exception 'Esta clínica no hace visitas a domicilio'; end if;
+  if p_place = 'domicilio' and coalesce(trim(p_address), '') = '' then raise exception 'Falta la dirección'; end if;
+  if p_starts_at < now() then raise exception 'Elige una fecha futura'; end if;
+  if (select count(*) from clinic_appointments where patient_id = cp.id and status = 'solicitada') >= 3 then
+    raise exception 'Ya tienes horas esperando confirmación en esta clínica';
+  end if;
+  -- Si los veterinarios cargaron sus días de trabajo, la hora debe estar libre
+  -- (con el traslado, si es a domicilio) y queda reservada a ese veterinario.
+  if has_schedule(p_clinic, p_place) then
+    v_vet := free_vet(p_clinic, p_place, p_starts_at);
+    if v_vet is null then raise exception 'Esa hora ya no está disponible. Elige otra.'; end if;
+  end if;
+  insert into clinic_appointments (clinic_id, patient_id, patient_name, service, starts_at, status, place, address, lat, lng, notes, requested_by, vet_id)
+  values (p_clinic, cp.id, cp.name, coalesce(nullif(p_service, ''), 'consulta'), p_starts_at, 'solicitada', p_place,
+    case when p_place = 'domicilio' then left(trim(p_address), 200) else '' end,
+    case when p_place = 'domicilio' then p_lat end, case when p_place = 'domicilio' then p_lng end,
+    left(coalesce(p_notes, ''), 300), auth.uid(), v_vet)
+  returning id into a_id;
+  if p_place = 'domicilio' then update clinic_patients set tutor_address = left(trim(p_address), 200) where id = cp.id; end if;
+  insert into notifications (user_id, type, title, body, url)
+  select m.user_id, 'info', 'Nueva solicitud de hora 📅',
+    cp.name || ' · ' || service_name(p_service) || case when p_place = 'domicilio' then ' a domicilio' else '' end
+      || ' · ' || cl_when(p_starts_at), '#/clinica/solicitudes'
+  from clinic_members m where m.clinic_id = p_clinic;
+  return a_id;
+end $$;
+
+-- El tutor cancela una hora suya que aún no empieza.
+create or replace function public.cancel_my_appointment(p_appt uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare a clinic_appointments;
+begin
+  update clinic_appointments set status = 'cancelada'
+  where id = p_appt and status in ('solicitada', 'agendada')
+    and patient_id in (select cp.id from clinic_patients cp join pets p on p.id = cp.pet_id where p.owner_id = auth.uid())
+  returning * into a;
+  if a.id is null then raise exception 'Hora no encontrada'; end if;
+  insert into notifications (user_id, type, title, body, url)
+  select m.user_id, 'info', 'Hora cancelada por el tutor', a.patient_name || ' · ' || cl_when(a.starts_at), '#/clinica/agenda/'
+    || to_char(a.starts_at at time zone 'America/Santiago', 'YYYY-MM-DD')
+  from clinic_members m where m.clinic_id = a.clinic_id;
+  return true;
+end $$;
+
+-- La clínica avisa al tutor (si su mascota está vinculada): hora confirmada,
+-- rechazada, veterinario en camino o en la puerta. Los textos son fijos.
+create or replace function public.appointment_notify(p_appt uuid, p_kind text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare a clinic_appointments; cp clinic_patients; c clinics; t text; b text;
+begin
+  select * into a from clinic_appointments where id = p_appt;
+  if a.id is null or not is_clinic_member(a.clinic_id) then raise exception 'Hora no encontrada'; end if;
+  select * into cp from clinic_patients where id = a.patient_id;
+  if cp.tutor_user is null then return false; end if;
+  select * into c from clinics where id = a.clinic_id;
+  case p_kind
+    when 'confirmada' then
+      t := 'Hora confirmada para ' || cp.name || ' 📅';
+      b := service_name(a.service) || case when a.place = 'domicilio' then ' a domicilio' else '' end
+        || ' el ' || cl_when(a.starts_at) || ' con ' || c.name || '.';
+    when 'rechazada' then
+      t := 'No pudimos confirmar la hora de ' || cp.name;
+      b := c.name || ' no tiene esa hora disponible.' || case when c.phone <> '' then ' Llama al ' || c.phone || ' para buscar otra.' else ' Pide otra hora en Kiltrazo.' end;
+    when 'en_camino' then
+      t := 'La veterinaria va en camino 🚗';
+      b := c.name || ' va hacia tu domicilio para atender a ' || cp.name || '.';
+    when 'llego' then
+      t := 'La veterinaria llegó 🏠';
+      b := c.name || ' está en tu puerta para atender a ' || cp.name || '.';
+    else raise exception 'Aviso no válido';
+  end case;
+  insert into notifications (user_id, type, title, body, url) values (cp.tutor_user, 'info', t, b, '#/perfil');
+  return true;
+end $$;
+
+-- Traspaso: la clínica registró una mascota y se la pasa a la app de su tutor
+-- con un enlace (un uso, 7 días). El tutor la registra con su cara (o elige una
+-- que ya tenga) y queda vinculada a la ficha de la clínica.
+create table if not exists public.clinic_transfers (
+  code text primary key,
+  patient_id uuid not null references public.clinic_patients on delete cascade,
+  clinic_id uuid not null references public.clinics on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.clinic_transfers enable row level security;
+
+create or replace function public.create_transfer_code(p_patient uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare cp clinic_patients; c text;
+begin
+  select * into cp from clinic_patients where id = p_patient;
+  if cp.id is null or not is_clinic_member(cp.clinic_id) then raise exception 'Paciente no encontrado'; end if;
+  if cp.pet_id is not null then raise exception 'Esta mascota ya está en la app de su tutor'; end if;
+  delete from clinic_transfers where patient_id = p_patient or created_at < now() - interval '7 days';
+  loop
+    c := short_code(8);
+    exit when not exists (select 1 from clinic_transfers where code = c);
+  end loop;
+  insert into clinic_transfers (code, patient_id, clinic_id) values (c, p_patient, cp.clinic_id);
+  return c;
+end $$;
+
+-- Lo que ve el tutor al abrir el enlace, antes de aceptar.
+create or replace function public.transfer_info(p_code text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('clinic', c.name, 'name', cp.name, 'species', cp.species, 'breed', cp.breed, 'photo', cp.photo,
+    'has_scan', cp.scan is not null)
+  from clinic_transfers t join clinic_patients cp on cp.id = t.patient_id join clinics c on c.id = t.clinic_id
+  where t.code = upper(trim(p_code)) and t.created_at > now() - interval '7 days' and cp.pet_id is null
+    and auth.uid() is not null;
+$$;
+
+create or replace function public.claim_transfer(p_code text, p_pet uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare t clinic_transfers; o profiles; c text;
+begin
+  if not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then raise exception 'Mascota no encontrada'; end if;
+  delete from clinic_transfers where code = upper(trim(p_code)) and created_at > now() - interval '7 days' returning * into t;
+  if t.code is null then raise exception 'El enlace ya se usó o venció. Pide uno nuevo a tu veterinaria.'; end if;
+  if exists (select 1 from clinic_patients where clinic_id = t.clinic_id and pet_id = p_pet and id <> t.patient_id) then
+    raise exception 'Esa mascota ya está vinculada a esta clínica';
+  end if;
+  select * into o from profiles where id = auth.uid();
+  update clinic_patients set pet_id = p_pet, tutor_user = auth.uid(),
+    tutor_name = coalesce(nullif(tutor_name, ''), nullif(trim(concat_ws(' ', o.first_name, o.last_name)), ''), o.name, ''),
+    tutor_phone = coalesce(nullif(tutor_phone, ''), o.phone, ''),
+    tutor_email = coalesce(nullif(tutor_email, ''), o.email, ''),
+    tutor_address = coalesce(nullif(tutor_address, ''), o.address, '')
+  where id = t.patient_id and pet_id is null;
+  if not found then raise exception 'Esta ficha ya está en la app de un tutor'; end if;
+  select name into c from clinics where id = t.clinic_id;
+  return c;
+end $$;
+
+-- La clínica puede filmar la cara de la mascota (mismo escaneo que la app).
+-- Al recibirla, el tutor no tiene que volver a filmarla: la mascota se crea
+-- con ese escaneo. Los vectores nunca salen hacia el tutor.
+create or replace function public.accept_transfer(p_code text) returns uuid
+language plpgsql security definer set search_path = public, extensions as $$
+declare cp clinic_patients; o profiles; c text; new_id uuid;
+begin
+  if auth.uid() is null then raise exception 'Sin sesión'; end if;
+  select p.* into cp from clinic_transfers t join clinic_patients p on p.id = t.patient_id
+  where t.code = upper(trim(p_code)) and t.created_at > now() - interval '7 days' and p.pet_id is null;
+  if cp.id is null then raise exception 'El enlace ya se usó o venció. Pide uno nuevo a tu veterinaria.'; end if;
+  if cp.scan is null then raise exception 'La clínica no filmó su cara. Regístrala tú desde la app.'; end if;
+  select * into o from profiles where id = auth.uid();
+  select name into c from clinics where id = cp.clinic_id;
+  insert into pets (owner_id, name, owner_name, diseases, vaccines, photo, species, breed)
+  values (auth.uid(), cp.name, coalesce(nullif(trim(concat_ws(' ', o.first_name, o.last_name)), ''), o.name, ''),
+          coalesce(nullif(cp.allergies, ''), ''), 'Las registra ' || c, cp.photo, coalesce(cp.species, ''), left(coalesce(cp.breed, ''), 80))
+  returning id into new_id;
+  insert into pet_samples (pet_id, kind, dino, mobilenet, basic)
+  select new_id, s.kind, s.dino, s.mobilenet, s.basic from bio_samples(cp.scan) s;
+  perform claim_transfer(p_code, new_id);
+  return new_id;
+end $$;
+
+-- ---------- Mapa de clínicas Kiltrazo (urgencias) ----------
+-- La clínica decide si aparece en el mapa de la app, con su ubicación, su
+-- horario y si atiende urgencias. Solo se muestran esos datos públicos.
+alter table public.clinics add column if not exists lat double precision;
+alter table public.clinics add column if not exists lng double precision;
+alter table public.clinics add column if not exists on_map boolean not null default false;
+alter table public.clinics add column if not exists emergencies boolean not null default false;
+alter table public.clinics add column if not exists hours text not null default '';
+
+drop function if exists public.nearby_clinics(double precision, double precision, double precision);
+create function public.nearby_clinics(p_lat double precision, p_lng double precision, p_km double precision default 50)
+returns table (id uuid, name text, address text, phone text, lat double precision, lng double precision,
+  emergencies boolean, home_visits boolean, hours text, km double precision)
+language sql stable security definer set search_path = public as $$
+  select * from (
+    select c.id, c.name, c.address, c.phone, c.lat, c.lng, c.emergencies, c.home_visits, c.hours,
+      case when p_lat is null or p_lng is null then null else
+        6371 * 2 * asin(least(1, sqrt(power(sin(radians(c.lat - p_lat) / 2), 2)
+          + cos(radians(p_lat)) * cos(radians(c.lat)) * power(sin(radians(c.lng - p_lng) / 2), 2)))) end as km
+    from clinics c where c.on_map and c.lat is not null and c.lng is not null
+  ) x
+  where x.km is null or x.km <= p_km
+  order by x.emergencies desc, x.km nulls last, x.name
+  limit 100;
+$$;
+grant execute on function public.nearby_clinics(double precision, double precision, double precision) to anon, authenticated;
+
+-- ---------- Días de trabajo de cada veterinario y traslado a domicilio ----------
+-- Cada veterinario indica qué días atiende en esta clínica o a domicilio, y en
+-- qué horario. schedule = {"1": {"place": "clinica", "from": "09:00", "to": "18:00"}, ...}
+-- con 1 = lunes ... 7 = domingo. Un día sin entrada = no atiende aquí (por
+-- ejemplo, trabaja en otra clínica). Entre visitas a domicilio se deja el
+-- tiempo de traslado de la clínica. Si nadie cargó horario, la app deja pedir
+-- cualquier hora, como antes.
+alter table public.clinic_members add column if not exists schedule jsonb not null default '{}'::jsonb;
+alter table public.clinics add column if not exists travel_minutes int not null default 30;
+alter table public.clinics drop constraint if exists clinics_travel_minutes_check;
+alter table public.clinics add constraint clinics_travel_minutes_check check (travel_minutes between 0 and 180);
+
+-- Minutos de una hora en el día (texto 'HH:MI').
+create or replace function public.hm(t text) returns int
+language sql immutable as $$ select split_part(t, ':', 1)::int * 60 + split_part(t, ':', 2)::int $$;
+
+create or replace function public.has_schedule(p_clinic uuid, p_place text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from clinic_members m, jsonb_each(m.schedule) d
+    where m.clinic_id = p_clinic and m.role = 'vet' and d.value->>'place' = p_place);
+$$;
+
+-- Un veterinario que atiende en ese lugar a esa hora y no tiene otra hora
+-- encima (a domicilio, contando el traslado antes y después).
+create or replace function public.free_vet(p_clinic uuid, p_place text, p_at timestamptz, p_minutes int default 30)
+returns uuid language sql stable security definer set search_path = public as $$
+  with loc as (select (p_at at time zone 'America/Santiago') as t),
+  c as (select case when p_place = 'domicilio' then travel_minutes else 0 end as gap from clinics where id = p_clinic)
+  select m.user_id from clinic_members m, loc, c
+  where m.clinic_id = p_clinic and m.role = 'vet'
+    and m.schedule -> extract(isodow from loc.t)::text ->> 'place' = p_place
+    and extract(hour from loc.t) * 60 + extract(minute from loc.t) >= hm(m.schedule -> extract(isodow from loc.t)::text ->> 'from')
+    and extract(hour from loc.t) * 60 + extract(minute from loc.t) + p_minutes <= hm(m.schedule -> extract(isodow from loc.t)::text ->> 'to')
+    and not exists (
+      select 1 from clinic_appointments a
+      where a.vet_id = m.user_id and a.status not in ('cancelada', 'no_vino')
+        and a.starts_at < p_at + make_interval(mins => p_minutes + case when a.place = 'domicilio' or p_place = 'domicilio' then c.gap else 0 end)
+        and a.starts_at + make_interval(mins => a.minutes + case when a.place = 'domicilio' or p_place = 'domicilio' then c.gap else 0 end) > p_at)
+  order by (select count(*) from clinic_appointments a where a.vet_id = m.user_id and a.starts_at::date = p_at::date), m.created_at
+  limit 1;
+$$;
+
+-- Horas libres de los próximos días para el tutor: {configured, days: [{day, times: ['09:00', ...]}]}.
+create or replace function public.available_slots(p_clinic uuid, p_place text, p_days int default 14) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare d date; t int; at_ timestamptz; times jsonb; out_ jsonb := '[]'::jsonb; lo int; hi int;
+begin
+  if auth.uid() is null then raise exception 'Sin sesión'; end if;
+  if not has_schedule(p_clinic, p_place) then return jsonb_build_object('configured', false, 'days', '[]'::jsonb); end if;
+  for d in select generate_series((now() at time zone 'America/Santiago')::date, (now() at time zone 'America/Santiago')::date + least(p_days, 31), '1 day')::date loop
+    select min(hm(m.schedule -> extract(isodow from d)::text ->> 'from')), max(hm(m.schedule -> extract(isodow from d)::text ->> 'to'))
+      into lo, hi from clinic_members m
+      where m.clinic_id = p_clinic and m.role = 'vet' and m.schedule -> extract(isodow from d)::text ->> 'place' = p_place;
+    continue when lo is null;
+    times := '[]'::jsonb;
+    t := lo;
+    while t + 30 <= hi loop
+      at_ := (d + make_interval(mins => t)) at time zone 'America/Santiago';
+      if at_ > now() + interval '1 hour' and free_vet(p_clinic, p_place, at_) is not null then
+        times := times || to_jsonb(lpad((t / 60)::text, 2, '0') || ':' || lpad((t % 60)::text, 2, '0'));
+      end if;
+      t := t + 30;
+    end loop;
+    if jsonb_array_length(times) > 0 then out_ := out_ || jsonb_build_object('day', d, 'times', times); end if;
+  end loop;
+  return jsonb_build_object('configured', true, 'days', out_);
+end $$;
+
+-- Lo guarda el mismo veterinario, o quien administra la clínica. No deja
+-- cruzar horarios con los días que esa persona trabaja en otra clínica Kiltrazo.
+create or replace function public.save_schedule(p_clinic uuid, p_user uuid, p_schedule jsonb) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare d record; other text;
+begin
+  if p_user <> auth.uid() and not is_clinic_admin(p_clinic) then raise exception 'Solo tú o quien administra la clínica'; end if;
+  for d in select key, value from jsonb_each(coalesce(p_schedule, '{}'::jsonb)) loop
+    if d.key not in ('1','2','3','4','5','6','7') or d.value->>'place' not in ('clinica', 'domicilio')
+       or d.value->>'from' !~ '^\d\d:\d\d$' or d.value->>'to' !~ '^\d\d:\d\d$' or hm(d.value->>'from') >= hm(d.value->>'to') then
+      raise exception 'Revisa el horario: la hora de término debe ser después de la de inicio';
+    end if;
+    select c.name into other from clinic_members m join clinics c on c.id = m.clinic_id
+    where m.user_id = p_user and m.clinic_id <> p_clinic and m.schedule ? d.key
+      and hm(m.schedule -> d.key ->> 'from') < hm(d.value->>'to') and hm(m.schedule -> d.key ->> 'to') > hm(d.value->>'from')
+    limit 1;
+    if other is not null then raise exception 'Ese horario se cruza con el que tiene en %', other; end if;
+  end loop;
+  update clinic_members set schedule = coalesce(p_schedule, '{}'::jsonb) where clinic_id = p_clinic and user_id = p_user;
+  return found;
+end $$;
+
+-- Días que cada persona del equipo trabaja en otras clínicas Kiltrazo (el
+-- nombre de la otra clínica solo se le muestra a la misma persona).
+create or replace function public.busy_elsewhere(p_clinic uuid)
+returns table (user_id uuid, dow text, from_hm text, to_hm text, clinic text)
+language sql stable security definer set search_path = public as $$
+  select o.user_id, d.key, d.value->>'from', d.value->>'to', case when o.user_id = auth.uid() then c.name else '' end
+  from clinic_members me join clinic_members o on o.clinic_id <> p_clinic
+    and o.user_id in (select user_id from clinic_members where clinic_id = p_clinic)
+  join clinics c on c.id = o.clinic_id, jsonb_each(o.schedule) d
+  where me.clinic_id = p_clinic and me.user_id = auth.uid();
+$$;

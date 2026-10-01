@@ -18,6 +18,8 @@ import inbox from './views/inbox.js';
 import admin from './views/admin.js';
 import password from './views/password.js';
 import privacy from './views/privacy.js';
+import receive, { pendingTransfer, TRANSFER_KEY } from './views/receive.js';
+import clinicsMap from './views/clinics-map.js';
 
 registerSW({ immediate: true });
 
@@ -35,6 +37,8 @@ const routes = [
   ['admin', admin],
   ['clave', password],
   ['privacidad', privacy],
+  ['recibir/:code', receive],
+  ['clinicas', clinicsMap],
 ];
 
 function resolve(hash) {
@@ -81,6 +85,15 @@ async function render() {
   document.body.classList.toggle('clinic-mode', clinic);
   if (clinic) return renderClinic(hash);
   let { view, params } = resolve(hash);
+  // Ficha enviada por la veterinaria a alguien sin perfil: se retoma al terminarlo.
+  if (view === receive && !isComplete(user)) {
+    try { localStorage.setItem(TRANSFER_KEY, JSON.stringify({ code: params.code, waiting: true })); } catch { /* sin almacenamiento */ }
+  }
+  const later = pendingTransfer();
+  if (later?.waiting && isComplete(user) && view === home) {
+    location.hash = `#/recibir/${later.code}`;
+    return;
+  }
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
   if (!isComplete(user) && view !== profile && view !== admin && view !== password && view !== privacy) view = profile;
 
