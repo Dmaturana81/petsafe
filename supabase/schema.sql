@@ -245,6 +245,14 @@ language sql immutable as $$
   select (face_threshold(model) - 0.15)::real;
 $$;
 
+-- Mascota que su dueño no ha marcado como perdida: el aviso automático pide un
+-- parecido mucho mayor (con 1.400 perros de prueba, 0.86 bajó los avisos
+-- equivocados de 3.9% a 1.5%). Igual que UNLOST_MARGIN en src/biometrics.js.
+create or replace function public.unlost_threshold(model text) returns real
+language sql immutable as $$
+  select (face_threshold(model) + 0.08)::real;
+$$;
+
 -- La cara decide; si las narices se parecen mucho, basta con una cara algo
 -- menos parecida (por ejemplo, encontrada de lado). Igual que compare() en la app.
 create or replace function public.is_pet_match(score real, model text, nose real) returns boolean
@@ -365,7 +373,8 @@ begin
 
   select p.id, p.owner_id, p.name, p.diseases, p.vaccines, s.score into b_id, b_owner, b_name, b_diseases, b_vaccines, b_score
   from _scores s join pets p on p.id = s.pet_id
-  where p.owner_id <> auth.uid() and is_pet_match(s.score, s.model, s.nose)
+  where p.owner_id <> auth.uid() and case when p.status = 'lost' then is_pet_match(s.score, s.model, s.nose)
+    else s.model <> 'basic' and s.score >= unlost_threshold(s.model) end
   order by s.score desc limit 1;
 
   update found_reports set best_score = top, pet_id = b_id, own_score = own_top,

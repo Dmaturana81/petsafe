@@ -210,7 +210,7 @@ export async function reportFound(finder, { photo, biometric, lat, lng, species 
   const similar = [];
   for (const pet of await db.all('pets')) {
     if (!sameSpecies(pet.species, species)) continue;
-    const { score, match, suggest } = compare(pet.biometric, biometric);
+    const { score, match, sure, suggest } = compare(pet.biometric, biometric);
     // Una mascota propia no se "encuentra"; se informa para no confundir.
     if (pet.ownerId === finder.id) {
       if (match) ownMatch = pet.name;
@@ -219,7 +219,8 @@ export async function reportFound(finder, { photo, biometric, lat, lng, species 
     }
     compared++;
     report.bestScore = Math.max(report.bestScore || 0, score);
-    if (match && (!best || score > best.score)) best = { pet, score };
+    // Si no está perdida, solo se avisa con un parecido mucho mayor.
+    if ((pet.status === 'lost' ? match : sure) && (!best || score > best.score)) best = { pet, score };
     // Perdidas algo parecidas: quien la encontró puede decir "¡es esta!".
     if (suggest && pet.status === 'lost') similar.push({ ...pick(pet), score });
   }

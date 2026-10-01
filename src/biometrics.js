@@ -30,6 +30,9 @@ export const THRESHOLDS = { dino: 0.78, mobilenet: 0.8, basic: 0.92 };
 // Algo menos parecido que el umbral: se muestra como "¿es esta?" para que una
 // persona decida. Igual que suggest_threshold() en supabase/schema.sql.
 export const SUGGEST_MARGIN = 0.15;
+// Si el dueño no la ha marcado como perdida, el aviso automático pide un
+// parecido mayor. Igual que unlost_threshold() en supabase/schema.sql.
+export const UNLOST_MARGIN = 0.08;
 
 const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.0-dev.20260914-8d85527a0/dist/';
 const HEAD_MODEL = 'models/pet-head.onnx';
@@ -333,7 +336,12 @@ export function compare(a, b) {
   const nose = a?.nose && b?.nose ? compareFace(a.nose, b.nose) : null;
   const noseHelps = nose && nose.model === face.model && face.model !== 'basic' &&
     nose.score >= NOSE.threshold && face.score >= THRESHOLDS[face.model] - NOSE.faceMargin;
-  return { ...face, match: face.match || noseHelps, nose: nose && nose.score };
+  return {
+    ...face,
+    match: face.match || noseHelps,
+    sure: face.model !== 'basic' && face.model != null && face.score >= THRESHOLDS[face.model] + UNLOST_MARGIN,
+    nose: nose && nose.score,
+  };
 }
 
 // Mismos valores que is_pet_match() en supabase/schema.sql.
