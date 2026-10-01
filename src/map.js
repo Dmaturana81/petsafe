@@ -29,6 +29,13 @@ export function showPoint(el, { lat, lng }) {
   return map;
 }
 
+/** Zona aproximada (círculo de ~300 m) sin marcar el punto exacto. */
+export function showArea(el, { lat, lng }) {
+  const map = base(el, [lat, lng], 15);
+  L.circle([lat, lng], { radius: 300, color: '#e85d4a', fillColor: '#f2785c', fillOpacity: 0.25, weight: 2 }).addTo(map);
+  return map;
+}
+
 /** Mapa para elegir un punto (toque para mover el marcador). */
 export function pickPoint(el, initial, onChange) {
   const start = initial ? [initial.lat, initial.lng] : DEFAULT_CENTER;

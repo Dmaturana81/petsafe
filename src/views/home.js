@@ -2,6 +2,7 @@ import { latestSuccesses, countComments, myPets } from '../data.js';
 import { esc, timeAgo } from '../ui.js';
 import { SUPPORT_URL } from '../config.js';
 import { supportCard } from './privacy.js';
+import { homeNearby } from '../nearby.js';
 
 export default async function home(el, _params, { user }) {
   const [successes, counts, pets] = await Promise.all([latestSuccesses(6), countComments(), myPets(user)]);
@@ -33,6 +34,8 @@ export default async function home(el, _params, { user }) {
       </a>
     </section>
 
+    <div id="nearby"></div>
+
     <a class="register-cta" href="#/registrar">
       <span>🐾</span>
       <span><strong>Registrar mascota</strong><small>Gratis · escaneo facial en segundos</small></span>
@@ -59,4 +62,6 @@ export default async function home(el, _params, { user }) {
     </section>
 
     ${SUPPORT_URL ? supportCard() : ''}`;
+
+  await homeNearby(el.querySelector('#nearby'), user).catch((err) => console.warn('Avisos cerca', err));
 }

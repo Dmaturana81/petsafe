@@ -481,3 +481,8 @@ details[open] > summary { display: none; }
 .vet-code-out { display: grid; justify-items: center; gap: 8px; margin-top: 8px; }
 .vet-code-big { font-size: 2rem; letter-spacing: 0.25em; font-weight: 900; }
 .my-pets .pet-vet img.vet-qr { width: 180px; height: 180px; object-fit: contain; border-radius: 12px; background: #fff; }
+
+/* Avisos de mascotas perdidas cerca */
+.pick.selected { border-color: var(--green); background: #eef7ef; }
+.nearby-ask { border: 2px solid #f6c7b9; background: #fff6f1; }
+.lost-alert .lost-photo { width: 160px; height: 160px; object-fit: cover; border-radius: 24px; margin: 0 auto 12px; display: block; }

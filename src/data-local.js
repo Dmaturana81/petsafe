@@ -4,6 +4,7 @@
 import { db, uid } from './db.js';
 import { compare } from './biometrics.js';
 import { pushLocal } from './notify.js';
+import { kmBetween, roundArea, distanceText, NEARBY_KM } from './geo.js';
 
 const now = () => new Date().toISOString();
 
@@ -84,10 +85,34 @@ export async function removeMyPet(user, petId) {
   return true;
 }
 
-/** "Perdí mi mascota": activa el aviso y busca entre los avisos de "encontré". */
-export async function reportLost(pet) {
+/**
+ * "Perdí mi mascota": activa el aviso y busca entre los avisos de "encontré".
+ * Si el dueño marca dónde se perdió (point), la primera vez avisa a quienes
+ * activaron los avisos cerca a 5 km o menos.
+ */
+export async function reportLost(pet, point = null) {
+  if (pet.status !== 'lost') {
+    Object.assign(pet, { lostAt: now(), lostLat: null, lostLng: null, lostAlertedAt: null, lostAlerted: 0 });
+  }
   pet.status = 'lost';
-  pet.lostAt = now();
+  if (point) Object.assign(pet, { lostLat: point.lat, lostLng: point.lng });
+  if (pet.lostLat != null && !pet.lostAlertedAt) {
+    const at = { lat: pet.lostLat, lng: pet.lostLng };
+    const what = [pet.species !== 'otro' && pet.species, pet.breed].filter(Boolean).join(', ');
+    let n = 0;
+    for (const a of await db.all('areas')) {
+      const km = kmBetween(a, at);
+      if (a.id === pet.ownerId || km > NEARBY_KM) continue;
+      await notify(a.id, {
+        type: 'lost',
+        title: `Se perdió ${pet.name} cerca de ti`,
+        body: `${what ? what[0].toUpperCase() + what.slice(1) + ', ' : ''}${distanceText(km)}. Toca para ver su foto. Si la ves, escanéala en Kiltrazo y le avisamos a su dueño.`,
+        url: `#/perdida/${pet.id}`,
+      });
+      n++;
+    }
+    Object.assign(pet, { lostAlertedAt: now(), lostAlerted: n });
+  }
   await db.put('pets', pet);
 
   // También los avisos que se hicieron antes de que el dueño avisara.
@@ -108,13 +133,38 @@ export async function reportLost(pet) {
   return {
     match: best?.report || null,
     suggestions: similar.filter((s) => s.id !== best?.report.id).sort((a, b) => b.score - a.score).slice(0, 3),
+    notified: pet.lostLat != null ? pet.lostAlerted : null,
   };
+}
+
+/** Lo que ve quien recibió el aviso de mascota perdida (sin datos del dueño). */
+export async function lostAlert(petId) {
+  const p = await db.get('pets', petId);
+  if (!p) return null;
+  const r3 = (x) => (x == null ? null : Math.round(x * 1000) / 1000);
+  return { id: p.id, name: p.name, photo: p.photo, species: p.species, breed: p.breed, status: p.status, lostAt: p.lostAt, lat: r3(p.lostLat), lng: r3(p.lostLng) };
+}
+
+// ---------- Avisos de mascotas perdidas cerca ----------
+
+export async function myArea(user) {
+  return user ? (await db.get('areas', user.id)) || null : null;
+}
+
+export async function setMyArea(user, point) {
+  return db.put('areas', { id: user.id, ...roundArea(point), updatedAt: now() });
+}
+
+export async function clearMyArea(user) {
+  await db.delete('areas', user.id);
+  return true;
 }
 
 /** "Ya encontré mi mascota": quita el aviso y lo convierte en caso exitoso. */
 export async function markRecovered(pet, story = '') {
   pet.status = 'home';
   pet.recoveredAt = now();
+  Object.assign(pet, { lostLat: null, lostLng: null, lostAlertedAt: null, lostAlerted: 0 });
   await db.put('pets', pet);
   for (const f of await db.all('found')) {
     if (f.petId === pet.id && f.status === 'open') {

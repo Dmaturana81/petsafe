@@ -64,6 +64,13 @@ alter table public.pets add column if not exists train_ok boolean not null defau
 alter table public.pets add column if not exists train_at timestamptz;
 alter table public.pets add column if not exists train_photos int not null default 0;
 
+-- Dónde se perdió (lo marca el dueño en el mapa) y a cuántas personas cerca se
+-- les avisó. Se borra cuando la mascota vuelve a casa.
+alter table public.pets add column if not exists lost_lat double precision;
+alter table public.pets add column if not exists lost_lng double precision;
+alter table public.pets add column if not exists lost_alerted_at timestamptz;
+alter table public.pets add column if not exists lost_alerted int not null default 0;
+
 -- Huellas biométricas: una fila por captura (y el promedio). Nadie las lee
 -- directamente; solo las funciones de búsqueda.
 create table if not exists public.pet_samples (
@@ -142,6 +149,18 @@ create table if not exists public.comments (
   text text not null check (char_length(text) between 1 and 300),
   created_at timestamptz not null default now()
 );
+
+-- Zona aproximada de cada persona que pidió avisos de mascotas perdidas cerca
+-- (Ley 21.719: solo con su permiso). Se guarda redondeada a ~1 km, nunca la
+-- ubicación exacta, y se borra al desactivar los avisos. Solo la usa
+-- report_lost para calcular la distancia; nadie más la lee.
+create table if not exists public.user_areas (
+  user_id uuid primary key default auth.uid() references auth.users on delete cascade,
+  lat double precision not null,
+  lng double precision not null,
+  updated_at timestamptz not null default now()
+);
+create index if not exists user_areas_lat on public.user_areas (lat);
 
 -- ---------- Funciones de apoyo ----------
 
@@ -390,17 +409,85 @@ begin
   return jsonb_build_object('diseases', pet.diseases, 'vaccines', pet.vaccines);
 end $$;
 
+-- Distancia en km entre dos puntos (fórmula del haversine).
+create or replace function public.km_between(
+  lat1 double precision, lng1 double precision, lat2 double precision, lng2 double precision
+) returns double precision
+language sql immutable as $$
+  select 6371 * 2 * asin(sqrt(least(1, power(sin(radians(lat2 - lat1) / 2), 2)
+    + cos(radians(lat1)) * cos(radians(lat2)) * power(sin(radians(lng2 - lng1) / 2), 2))));
+$$;
+
+-- Avisos de mascotas perdidas cerca: la persona da permiso y la app guarda su
+-- zona redondeada a 2 decimales (~1 km). El permiso queda en consent_log.
+create or replace function public.set_my_area(p_lat double precision, p_lng double precision) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Sin sesión'; end if;
+  if p_lat is null or p_lng is null or p_lat not between -90 and 90 or p_lng not between -180 and 180 then
+    raise exception 'Ubicación no válida';
+  end if;
+  if not exists (select 1 from user_areas where user_id = auth.uid()) then
+    insert into consent_log (user_id, kind, granted, version) values (auth.uid(), 'zona', true, '2026-10-01');
+  end if;
+  insert into user_areas (user_id, lat, lng, updated_at)
+  values (auth.uid(), round(p_lat::numeric, 2), round(p_lng::numeric, 2), now())
+  on conflict (user_id) do update set lat = excluded.lat, lng = excluded.lng, updated_at = now();
+  return true;
+end $$;
+
+create or replace function public.clear_my_area() returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from user_areas where user_id = auth.uid();
+  if found then
+    insert into consent_log (user_id, kind, granted, version) values (auth.uid(), 'zona', false, '2026-10-01');
+  end if;
+  return true;
+end $$;
+
 -- "Perdí mi mascota": activa el aviso y busca entre los avisos de "encontré",
 -- también los que se hicieron antes de que el dueño avisara. Devuelve la
 -- coincidencia (id, o nulo) y los avisos parecidos para que el dueño revise.
+-- Si el dueño marca dónde se perdió, la primera vez se avisa a todas las
+-- personas con avisos cerca activados a 5 km o menos (notified = cuántas).
 drop function if exists public.report_lost(uuid);
-create function public.report_lost(p_pet uuid) returns jsonb
+drop function if exists public.report_lost(uuid, double precision, double precision);
+create function public.report_lost(p_pet uuid, p_lat double precision default null, p_lng double precision default null)
+returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
-declare f_id uuid; f_score real; p_name text; sugg jsonb;
+declare f_id uuid; f_score real; pet pets; what text; sugg jsonb; n int;
 begin
-  update pets set status = 'lost', lost_at = now()
-  where id = p_pet and owner_id = auth.uid() returning name into p_name;
-  if p_name is null then raise exception 'Mascota no encontrada'; end if;
+  if p_lat is not null and (p_lat not between -90 and 90 or p_lng not between -180 and 180) then
+    raise exception 'Ubicación no válida';
+  end if;
+  -- Si ya estaba perdida, se mantiene la fecha y el punto (a menos que marque otro).
+  update pets set status = 'lost',
+    lost_at = case when status = 'lost' then coalesce(lost_at, now()) else now() end,
+    lost_lat = coalesce(p_lat, case when status = 'lost' then lost_lat end),
+    lost_lng = coalesce(p_lng, case when status = 'lost' then lost_lng end),
+    lost_alerted_at = case when status = 'lost' then lost_alerted_at end,
+    lost_alerted = case when status = 'lost' then lost_alerted else 0 end
+  where id = p_pet and owner_id = auth.uid() returning * into pet;
+  if pet.id is null then raise exception 'Mascota no encontrada'; end if;
+
+  -- Aviso a las personas cerca: una sola vez por pérdida.
+  if pet.lost_lat is not null and pet.lost_alerted_at is null then
+    what := concat_ws(', ', nullif(nullif(pet.species, ''), 'otro'), nullif(pet.breed, ''));
+    what := upper(left(what, 1)) || substr(what, 2);
+    insert into notifications (user_id, type, title, body, url)
+    select a.user_id, 'lost', 'Se perdió ' || pet.name || ' cerca de ti',
+      coalesce(nullif(what, '') || ', ', '')
+        || case when d < 1 then 'a menos de 1 km de ti' else 'a ' || round(d) || ' km de ti' end
+        || '. Toca para ver su foto. Si la ves, escanéala en Kiltrazo y le avisamos a su dueño.',
+      '#/perdida/' || pet.id
+    from (select user_id, km_between(lat, lng, pet.lost_lat, pet.lost_lng) as d from user_areas
+          where user_id <> auth.uid() and lat between pet.lost_lat - 0.06 and pet.lost_lat + 0.06) a
+    where a.d <= 5;
+    get diagnostics n = row_count;
+    update pets set lost_alerted_at = now(), lost_alerted = n where id = pet.id;
+    pet.lost_alerted := n;
+  end if;
 
   create temp table if not exists _found (found_id uuid, score real, model text, nose real) on commit drop;
   delete from _found where true;
@@ -414,7 +501,7 @@ begin
   if f_id is not null and not exists (select 1 from found_reports where id = f_id and pet_id = p_pet) then
     update found_reports set pet_id = p_pet, match_kind = 'auto', match_score = f_score where id = f_id;
     insert into notifications (user_id, type, title, body, url)
-    values (auth.uid(), 'match', '¡Encontraron a ' || p_name || '! 🐾',
+    values (auth.uid(), 'match', '¡Encontraron a ' || pet.name || '! 🐾',
             'Toca para ver dónde está y contactar a quien la encontró.', '#/encontrada/' || f_id);
   end if;
 
@@ -424,8 +511,22 @@ begin
     where fr.pet_id is null and s.score >= suggest_threshold(s.model) and fr.id is distinct from f_id
     order by s.score desc limit 3) x;
 
-  return jsonb_build_object('id', f_id, 'suggestions', sugg);
+  return jsonb_build_object('id', f_id, 'suggestions', sugg,
+    'notified', case when pet.lost_lat is null then null else pet.lost_alerted end);
 end $$;
+
+-- Lo que ve quien recibió el aviso de mascota perdida: foto, nombre, tipo y la
+-- zona aproximada (~100 m). Nunca datos del dueño. Solo para quien recibió el
+-- aviso (o el dueño).
+create or replace function public.lost_alert(p_pet uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', p.id, 'name', p.name, 'photo', p.photo, 'species', p.species, 'breed', p.breed,
+    'status', p.status, 'lost_at', p.lost_at,
+    'lat', round(p.lost_lat::numeric, 3), 'lng', round(p.lost_lng::numeric, 3))
+  from pets p
+  where p.id = p_pet and (p.owner_id = auth.uid() or exists (
+    select 1 from notifications n where n.user_id = auth.uid() and n.url = '#/perdida/' || p.id::text));
+$$;
 
 -- El dueño reconoce a su mascota en un aviso sugerido: se liga el aviso (así
 -- ve el contacto y el mapa) y se avisa a quien la encontró.
@@ -458,7 +559,8 @@ declare s_id uuid; pet pets;
 begin
   select * into pet from pets where id = p_pet and (owner_id = auth.uid() or is_admin());
   if pet.id is null then raise exception 'Mascota no encontrada'; end if;
-  update pets set status = 'home', recovered_at = now() where id = p_pet;
+  update pets set status = 'home', recovered_at = now(), lost_lat = null, lost_lng = null,
+    lost_alerted_at = null, lost_alerted = 0 where id = p_pet;
   update found_reports set status = 'closed' where pet_id = p_pet and status = 'open';
   insert into successes (pet_id, pet_name, photo, story)
   values (pet.id, pet.name, pet.photo, coalesce(p_story, '')) returning id into s_id;
@@ -584,6 +686,10 @@ begin
   update comments set user_id = auth.uid() where user_id = f;
   update contacts set user_id = auth.uid() where user_id = f;
   update push_subscriptions set user_id = auth.uid() where user_id = f;
+  -- La zona para avisos cerca pasa solo si la cuenta aún no tiene una.
+  if not exists (select 1 from user_areas where user_id = auth.uid()) then
+    update user_areas set user_id = auth.uid() where user_id = f;
+  end if;
   -- Kiltrazo Clínica (las tablas se crean más abajo; existen al correr esto).
   if to_regclass('public.clinic_patients') is not null then
     update clinic_patients set tutor_user = auth.uid() where tutor_user = f;
@@ -608,6 +714,12 @@ alter table public.notifications enable row level security;
 alter table public.successes enable row level security;
 alter table public.comments enable row level security;
 alter table public.contacts enable row level security;
+alter table public.user_areas enable row level security;
+
+-- Cada persona ve solo su propia zona; se guarda y se borra con set_my_area y
+-- clear_my_area. Ni el administrador la ve.
+drop policy if exists "mi zona" on public.user_areas;
+create policy "mi zona" on public.user_areas for select using (user_id = auth.uid());
 
 drop policy if exists "perfil propio o admin" on public.profiles;
 create policy "perfil propio o admin" on public.profiles for select using (id = auth.uid() or is_admin());

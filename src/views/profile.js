@@ -5,6 +5,7 @@ import { esc, toast, go, isComplete } from '../ui.js';
 import { SPECIES, breedOptions, describe } from '../breeds.js';
 import { PROMOS_VERSION, SUPPORT_URL } from '../config.js';
 import { promosBox, supportCard } from './privacy.js';
+import { profileNearby } from '../nearby.js';
 
 export default async function profile(el, _params, { user, refresh }) {
   // Con Supabase cada celular es un usuario; cambiar de usuario es solo para pruebas locales.
@@ -65,6 +66,8 @@ export default async function profile(el, _params, { user, refresh }) {
         <p>${perm === 'granted' ? '✅ Activadas en este celular.' : perm === 'denied' ? 'Bloqueadas. Actívalas desde la configuración del navegador.' : perm === 'unsupported' ? unsupportedHelp() : 'Actívalas para saber al instante si encuentran a tu mascota.'}</p>
         ${perm === 'default' ? '<button class="btn secondary" id="perm">Activar notificaciones</button>' : ''}
       </div>
+
+      <div id="nearby"></div>
 
       <div class="card">
         <h2>Mis mascotas</h2>
@@ -137,6 +140,9 @@ export default async function profile(el, _params, { user, refresh }) {
         ${CLOUD ? '' : '<button class="btn ghost" id="newuser">Agregar otro usuario</button>'}
         <a class="btn ghost" href="#/admin">Administrador</a>
       </div>` : ''}`;
+
+  const nearbyBox = el.querySelector('#nearby');
+  if (nearbyBox) profileNearby(nearbyBox, user, refresh).catch((err) => console.warn('Avisos cerca', err));
 
   const loginBox = el.querySelector('#email-login');
   if (loginBox) mountEmailLogin(loginBox, { onDone: () => go('#/') });
