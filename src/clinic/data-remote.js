@@ -83,8 +83,18 @@ export async function joinClinic(code, memberName) {
   return run(sb().rpc('join_clinic', { p_code: code, p_member_name: memberName }));
 }
 
-export async function createInvite(clinicId, role) {
-  return run(sb().rpc('create_clinic_invite', { p_clinic: clinicId, p_role: role }));
+export async function createInvite(clinicId, role, admin = false) {
+  return run(sb().rpc('create_clinic_invite', { p_clinic: clinicId, p_role: role, p_admin: admin }));
+}
+
+export async function setClinicAdmin(clinicId, userId, admin) {
+  return run(sb().rpc('set_clinic_admin', { p_clinic: clinicId, p_user: userId, p_admin: admin }));
+}
+
+// Todas las clínicas con su equipo (solo lo ve el administrador de Kiltrazo).
+export async function allClinics() {
+  const rows = await run(sb().from('clinics').select('*, members:clinic_members(*)').order('name'));
+  return rows.map((c) => ({ ...camel(c), members: (c.members || []).map(camel) }));
 }
 
 // ---------- Mascotas de Kiltrazo ----------

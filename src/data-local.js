@@ -30,6 +30,13 @@ export async function switchUser(userId) {
 
 export const listUsers = () => db.all('users');
 
+/** El administrador pasa las mascotas de una cuenta a otra (celular perdido). */
+export async function moveUserPets(fromId, toId) {
+  const pets = (await db.all('pets')).filter((p) => p.ownerId === fromId);
+  for (const p of pets) await db.put('pets', { ...p, ownerId: toId });
+  return pets.length;
+}
+
 // ---------- Mascotas ----------
 
 export async function registerPet(owner, { name, species = '', breed = '', ownerName, diseases, vaccines, photo, biometric, crops }) {

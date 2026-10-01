@@ -1,5 +1,5 @@
 import {
-  allPets, savePet, allFound, saveFound, deleteFound, listUsers, notify, notifyAll,
+  allPets, savePet, allFound, saveFound, deleteFound, listUsers, moveUserPets, notify, notifyAll,
   latestSuccesses, deleteSuccess, commentsFor, deleteComment, addSuccess, markRecovered,
   trainingPhotos, CLOUD, isAdmin, claimAdmin, adminExists, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
 } from '../data.js';
@@ -24,7 +24,7 @@ export default async function admin(el, _params, ctx) {
     <div class="admin-head">
       <h1>Administrador</h1>
       <div class="tabs">
-        ${[['alertas', '🚨 Alertas'], ['recon', '🎯 Reconocimiento'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
+        ${[['alertas', '🚨 Alertas'], ['recon', '🎯 Reconocimiento'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['clinicas', '🏥 Clínicas'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
           .map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}
       </div>
     </div>
@@ -38,7 +38,7 @@ export default async function admin(el, _params, ctx) {
   );
 
   const panel = el.querySelector('#panel');
-  await ({ alertas, recon, mensajes, usuarios, casos, datos })[tab](panel, ctx);
+  await ({ alertas, recon, mensajes, usuarios, clinicas, casos, datos })[tab](panel, ctx);
 }
 
 // Con Supabase el permiso vive en el servidor: se entra con un correo de
@@ -396,7 +396,15 @@ async function usuarios(panel, { refresh }) {
           <div class="user-detail" hidden>
             <p class="small">📞 ${esc(u.phone || 'No informó')}<br>✉️ ${esc(u.email || 'No informó')}<br>🏠 ${esc(u.address || 'No informó')}<br>Usuario desde ${esc(day(u.createdAt) || '—')}<br>${u.promos ? `✅ Acepta ofertas${u.promosAt ? ` desde ${esc(day(u.promosAt))}` : ''}` : '🚫 No acepta ofertas'}</p>
             ${own.length ? `<ul class="pet-list">${own.map(petItem).join('')}</ul>` : '<p class="muted">Sin mascotas registradas.</p>'}
-            <button type="button" class="btn small" data-msg="${esc(u.id)}">Enviar mensaje</button>
+            <span class="row-actions">
+              <button type="button" class="btn small" data-msg="${esc(u.id)}">Enviar mensaje</button>
+              ${own.length ? `<button type="button" class="btn small ghost" data-move="${esc(u.id)}">Pasar mascotas a otra cuenta</button>` : ''}
+            </span>
+            <div class="move-box" hidden>
+              <p class="small">¿Perdió su celular y no tenía clave? Pídele que abra Kiltrazo en el celular nuevo y escriba su nombre en Perfil. Llámalo a este teléfono para confirmar que es la persona y busca aquí su cuenta nueva.</p>
+              <input class="search" type="search" placeholder="🔍 Buscar la cuenta nueva" autocomplete="off">
+              <ul class="user-results"></ul>
+            </div>
           </div>
         </li>`;
       }).join('') || '<li class="muted">Todavía no hay usuarios.</li>'}</ul>
@@ -421,10 +429,111 @@ async function usuarios(panel, { refresh }) {
       li.hidden = !!q && !t.includes(q) && !(qd.length >= 3 && t.replace(/\D/g, '').includes(qd));
     });
   });
+  panel.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', () => {
+    const from = users.find((u) => u.id === b.dataset.move);
+    const box = b.closest('.user-detail').querySelector('.move-box');
+    box.hidden = !box.hidden;
+    if (box.dataset.ready) return;
+    box.dataset.ready = '1';
+    const others = users.filter((u) => u.id !== from.id);
+    userSearch(box.querySelector('input'), box.querySelector('ul'), others, (u) => `
+      <li><span><strong>${esc(fullName(u))}</strong><small>${esc([u.phone, u.email].filter(Boolean).join(' · ') || 'Sin datos')} · desde ${esc(day(u.createdAt))}</small></span>
+      <button type="button" class="btn small primary" data-to="${esc(u.id)}">Pasar aquí</button></li>`, (list) => {
+      list.querySelectorAll('[data-to]').forEach((t) => t.addEventListener('click', async () => {
+        const to = users.find((u) => u.id === t.dataset.to);
+        const n = petsOf(from.id).length;
+        if (!confirm(`¿Pasar ${n === 1 ? 'la mascota' : `las ${n} mascotas`} de ${fullName(from)} (${from.phone || 'sin teléfono'}) a ${fullName(to)} (${to.phone || 'sin teléfono'})?`)) return;
+        try {
+          await moveUserPets(from.id, to.id);
+          await notify(to.id, { type: 'admin', title: 'Recuperamos tus mascotas 🐾', body: 'Tus mascotas ya están en esta cuenta. Crea una clave en Perfil → Tu cuenta para no perderlas si cambias de celular.' });
+          toast('Mascotas traspasadas', 'ok');
+          refresh();
+        } catch (err) {
+          toast(err.message, 'bad');
+        }
+      }));
+    });
+  }));
   panel.querySelectorAll('[data-msg]').forEach((b) => b.addEventListener('click', () => {
     sessionStorage.setItem('petsafe-admin-to', b.dataset.msg);
     sessionStorage.setItem('petsafe-admin-tab', 'mensajes');
     refresh();
+  }));
+}
+
+// Todas las clínicas de Kiltrazo y su equipo. El administrador de Kiltrazo
+// maneja cuentas (quién administra cada clínica), no ve fichas clínicas.
+async function clinicas(panel, { refresh }) {
+  const { allClinics, setClinicAdmin, createInvite } = await import('../clinic/data.js');
+  const { ROLES } = await import('../clinic/ui.js');
+  const [clinics, users] = await Promise.all([allClinics(), listUsers()]);
+  const emailOf = (id) => users.find((u) => u.id === id)?.email || '';
+  const link = `${location.origin}${location.pathname}#/clinica`;
+
+  panel.innerHTML = `
+    <div class="card">
+      <h2>Si alguien pierde su clave</h2>
+      <p class="small"><strong>Recuerda su correo:</strong> que toque "Olvidé mi contraseña" al entrar y siga el enlace que le llega.</p>
+      <p class="small"><strong>Perdió también el correo:</strong> quien administra su clínica lo quita del equipo y lo invita de nuevo. Las fichas son de la clínica, no se pierde nada.</p>
+      <p class="small"><strong>La clínica se quedó sin administrador:</strong> nombra a otra persona del equipo con "Hacer administrador", o crea un código para alguien nuevo.</p>
+    </div>
+    <div class="card">
+      <h2>Clínicas (${clinics.length})</h2>
+      ${clinics.map((c) => {
+        const admins = c.members.filter((m) => m.isAdmin).length;
+        return `
+        <div class="admin-clinic" data-c="${esc(c.id)}">
+          <div class="admin-clinic-head">
+            <strong>${esc(c.name)}</strong>
+            <small>${esc([c.address, c.phone].filter(Boolean).join(' · ') || 'Sin dirección')}</small>
+            ${admins ? '' : '<span class="warn">⚠️ Sin administrador</span>'}
+          </div>
+          <ul class="admin-team">${c.members.map((m) => `
+            <li><span><strong>${esc(m.name || 'Sin nombre')}</strong>
+              <small>${esc([ROLES[m.role], emailOf(m.userId)].filter(Boolean).join(' · '))}${m.isAdmin ? ' · <b>administra</b>' : ''}</small></span>
+              ${m.isAdmin
+                ? (admins > 1 ? `<button class="link small" data-adm="${esc(m.userId)}" data-on="">Quitar administrador</button>` : '')
+                : `<button class="btn small" data-adm="${esc(m.userId)}" data-on="1">Hacer administrador</button>`}
+            </li>`).join('') || '<li class="muted">Sin equipo.</li>'}</ul>
+          <details class="admin-invite"><summary class="link small">Código para un nuevo administrador</summary>
+            <div class="row-actions">
+              <select data-role><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select>
+              <button class="btn small secondary" data-inv>Crear código</button>
+            </div>
+            <p class="invite-code" data-code hidden></p>
+            <p class="muted small">La persona entra a ${esc(link)}, crea su cuenta, toca "Me invitaron" y escribe el código. Queda como administradora. Sirve una vez y dura 7 días.</p>
+          </details>
+        </div>`;
+      }).join('') || '<p class="muted">Todavía no hay clínicas.</p>'}
+    </div>`;
+
+  panel.querySelectorAll('[data-adm]').forEach((b) => b.addEventListener('click', async () => {
+    const clinic = clinics.find((c) => c.id === b.closest('[data-c]').dataset.c);
+    const m = clinic.members.find((x) => x.userId === b.dataset.adm);
+    const on = Boolean(b.dataset.on);
+    if (!confirm(on ? `¿Dejar a ${m.name} como administrador/a de ${clinic.name}?` : `¿Quitarle a ${m.name} la administración de ${clinic.name}?`)) return;
+    try {
+      await setClinicAdmin(clinic.id, m.userId, on);
+      toast(on ? `${m.name} ahora administra ${clinic.name}` : 'Listo', 'ok');
+      refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  }));
+  panel.querySelectorAll('[data-inv]').forEach((b) => b.addEventListener('click', async () => {
+    const box = b.closest('[data-c]');
+    const role = box.querySelector('[data-role]').value;
+    b.disabled = true;
+    try {
+      const code = await createInvite(box.dataset.c, role, true);
+      const out = box.querySelector('[data-code]');
+      out.hidden = false;
+      out.innerHTML = `<b>${esc(code)}</b><small>administrador/a · ${esc(ROLES[role].toLowerCase())}</small>`;
+    } catch (err) {
+      toast(err.message, 'bad');
+    } finally {
+      b.disabled = false;
+    }
   }));
 }
 

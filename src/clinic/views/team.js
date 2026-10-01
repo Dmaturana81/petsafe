@@ -1,13 +1,14 @@
 // Equipo de la clínica: quién entra, con qué rol, y códigos para invitar.
 
 import { esc, toast, getLocation } from '../../ui.js';
-import { createInvite, removeMember, saveClinic, saveSchedule, busyElsewhere } from '../data.js';
+import { createInvite, removeMember, setClinicAdmin, saveClinic, saveSchedule, busyElsewhere } from '../data.js';
 import { ROLES } from '../ui.js';
 
 export default function team(el, _params, ctx) {
   const { clinic, team: people, me } = ctx;
   const admin = clinic.isAdmin;
   const link = `${location.origin}${location.pathname}#/clinica`;
+  const admins = people.filter((m) => m.isAdmin).length;
 
   el.innerHTML = `
     <header class="ck-head"><div><h1>Equipo</h1><p class="ck-sub">${esc(clinic.name)}</p></div></header>
@@ -17,8 +18,12 @@ export default function team(el, _params, ctx) {
         ${people.map((m) => `
           <div class="ck-member">
             <span><strong>${esc(m.name || 'Sin nombre')}</strong><small>${ROLES[m.role]}${m.isAdmin ? ' · administra' : ''}${m.userId === me.userId ? ' · tú' : ''}</small></span>
-            ${admin && m.userId !== me.userId ? `<button class="link danger small" data-rm="${m.userId}">Quitar</button>` : ''}
+            ${admin && m.userId !== me.userId ? `<span class="ck-actions">
+              ${m.isAdmin ? `<button class="link small" data-adm="${m.userId}">Quitar administrador</button>`
+                : `<button class="link small" data-adm="${m.userId}" data-on="1">Hacer administrador</button>`}
+              <button class="link danger small" data-rm="${m.userId}">Quitar</button></span>` : ''}
           </div>`).join('')}
+        ${admin && admins < 2 && people.length > 1 ? '<p class="ck-tip small">💡 Nombra a otra persona como administradora. Así, si pierdes el acceso, la clínica sigue teniendo quien la maneje.</p>' : ''}
       </div>
       <div class="ck-stack">
         ${admin ? `
@@ -73,6 +78,18 @@ export default function team(el, _params, ctx) {
       e.target.disabled = false;
     }
   });
+
+  el.querySelectorAll('[data-adm]').forEach((b) => b.addEventListener('click', async () => {
+    const m = people.find((x) => x.userId === b.dataset.adm);
+    const on = Boolean(b.dataset.on);
+    if (!confirm(on ? `¿${m.name} también administrará la clínica? Podrá invitar y quitar personas.` : `¿Quitarle a ${m.name} la administración?`)) return;
+    try {
+      await setClinicAdmin(clinic.id, m.userId, on);
+      ctx.refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  }));
 
   el.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', async () => {
     const m = people.find((x) => x.userId === b.dataset.rm);

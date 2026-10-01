@@ -525,3 +525,29 @@ details[open] > summary { display: none; }
 .vet-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .vet-chip { font: inherit; font-size: 0.9rem; font-weight: 700; padding: 8px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
 .vet-chip.on { background: var(--sun); border-color: var(--sun); }
+
+/* Administrador: clínicas de Kiltrazo y traspaso de mascotas */
+.admin-clinic { border-top: 1px solid var(--line, #eee); padding: 12px 0; display: grid; gap: 8px; }
+.admin-clinic:first-of-type { border-top: 0; }
+.admin-clinic-head strong, .admin-clinic-head small { display: block; }
+.admin-clinic-head small { color: var(--muted); }
+.admin-clinic .warn { display: inline-block; margin-top: 4px; background: #fdecea; color: #b3261e; border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-weight: 700; }
+.admin-team { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.admin-team li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-radius: 14px; background: var(--cream); }
+.admin-team li > span { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.admin-team li > button { white-space: nowrap; }
+.admin-team strong, .admin-team small { display: block; }
+.admin-team small { color: var(--muted); }
+.admin-invite summary { list-style: none; cursor: pointer; }
+.admin-invite[open] > summary { display: block; }
+.admin-invite .row-actions { margin: 8px 0; align-items: center; }
+.admin-invite select { width: auto; font: inherit; padding: 6px 10px; border-radius: 10px; border: 2px solid var(--line); background: var(--bg); color: var(--text); }
+.invite-code { display: grid; justify-items: center; background: var(--cream); border-radius: 14px; padding: 12px; margin: 0; }
+.invite-code b { font-size: 1.8rem; letter-spacing: 0.25em; }
+.invite-code small { color: var(--muted); }
+.move-box { margin-top: 10px; display: grid; gap: 8px; }
+.move-box p { margin: 0; }
+.save-account { text-align: center; }
+.save-account .save-icon { font-size: 3rem; line-height: 1; margin-bottom: 4px; }
+.save-account .form { text-align: left; }
+.save-account .btn.ghost { width: 100%; margin-top: 8px; }

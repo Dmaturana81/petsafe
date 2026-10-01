@@ -13,6 +13,7 @@ import lostAlert from './views/lost-alert.js';
 import found from './views/found.js';
 import match from './views/match.js';
 import recovered from './views/recovered.js';
+import saveAccount from './views/save-account.js';
 import success from './views/success.js';
 import inbox from './views/inbox.js';
 import admin from './views/admin.js';
@@ -36,6 +37,7 @@ const routes = [
   ['avisos', inbox],
   ['admin', admin],
   ['clave', password],
+  ['guardar', saveAccount],
   ['privacidad', privacy],
   ['recibir/:code', receive],
   ['clinicas', clinicsMap],

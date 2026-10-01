@@ -272,3 +272,4 @@ body.clinic-mode #view { padding: 0; display: block; }
   .ck-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ck-seg span { text-align: center; padding: 8px 4px; }
 }
+.ck-tip { background: var(--cream); border-radius: 12px; padding: 10px 12px; margin: 10px 0 0; }
