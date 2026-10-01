@@ -285,7 +285,22 @@ export async function transferInfo(code) {
   const t = await get('clinic_transfers', code.trim().toUpperCase());
   const cp = t && await get('clinic_patients', t.patientId);
   if (!cp || cp.petId) return null;
-  return { clinic: (await get('clinics', t.clinicId))?.name, name: cp.name, species: cp.species, breed: cp.breed, photo: cp.photo };
+  return { clinic: (await get('clinics', t.clinicId))?.name, name: cp.name, species: cp.species, breed: cp.breed, photo: cp.photo, hasScan: Boolean(cp.scan) };
+}
+
+export async function acceptTransfer(code) {
+  const t = await get('clinic_transfers', code.trim().toUpperCase());
+  const cp = t && await get('clinic_patients', t.patientId);
+  if (!cp || cp.petId) throw new Error('El enlace ya se usó o venció. Pide uno nuevo a tu veterinaria.');
+  if (!cp.scan) throw new Error('La clínica no filmó su cara. Regístrala tú desde la app.');
+  const me = await app.currentUser();
+  const clinic = (await get('clinics', t.clinicId))?.name;
+  const pet = await app.registerPet(me, {
+    name: cp.name, species: cp.species || '', breed: cp.breed || '', ownerName: me.name || '',
+    diseases: cp.allergies || '', vaccines: `Las registra ${clinic}`, photo: cp.photo, biometric: cp.scan, crops: null,
+  });
+  await claimTransfer(code, pet.id);
+  return pet.id;
 }
 
 export async function claimTransfer(code, petId) {

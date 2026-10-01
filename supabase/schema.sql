@@ -1266,6 +1266,8 @@ create policy "clínica borra exámenes" on storage.objects for delete using (
 alter table public.clinics add column if not exists home_visits boolean not null default false;
 -- Dirección del tutor, para las visitas a domicilio.
 alter table public.clinic_patients add column if not exists tutor_address text not null default '';
+-- Escaneo de la cara hecho en la clínica, para pasar la mascota al tutor sin volver a filmarla.
+alter table public.clinic_patients add column if not exists scan jsonb;
 
 -- Horas: en la clínica o a domicilio (con dirección y, si el tutor la compartió,
 -- su ubicación). 'solicitada' = la pidió el tutor y la clínica aún no confirma;
@@ -1405,7 +1407,8 @@ end $$;
 -- Lo que ve el tutor al abrir el enlace, antes de aceptar.
 create or replace function public.transfer_info(p_code text) returns jsonb
 language sql stable security definer set search_path = public as $$
-  select jsonb_build_object('clinic', c.name, 'name', cp.name, 'species', cp.species, 'breed', cp.breed, 'photo', cp.photo)
+  select jsonb_build_object('clinic', c.name, 'name', cp.name, 'species', cp.species, 'breed', cp.breed, 'photo', cp.photo,
+    'has_scan', cp.scan is not null)
   from clinic_transfers t join clinic_patients cp on cp.id = t.patient_id join clinics c on c.id = t.clinic_id
   where t.code = upper(trim(p_code)) and t.created_at > now() - interval '7 days' and cp.pet_id is null
     and auth.uid() is not null;
@@ -1431,6 +1434,30 @@ begin
   if not found then raise exception 'Esta ficha ya está en la app de un tutor'; end if;
   select name into c from clinics where id = t.clinic_id;
   return c;
+end $$;
+
+-- La clínica puede filmar la cara de la mascota (mismo escaneo que la app).
+-- Al recibirla, el tutor no tiene que volver a filmarla: la mascota se crea
+-- con ese escaneo. Los vectores nunca salen hacia el tutor.
+create or replace function public.accept_transfer(p_code text) returns uuid
+language plpgsql security definer set search_path = public, extensions as $$
+declare cp clinic_patients; o profiles; c text; new_id uuid;
+begin
+  if auth.uid() is null then raise exception 'Sin sesión'; end if;
+  select p.* into cp from clinic_transfers t join clinic_patients p on p.id = t.patient_id
+  where t.code = upper(trim(p_code)) and t.created_at > now() - interval '7 days' and p.pet_id is null;
+  if cp.id is null then raise exception 'El enlace ya se usó o venció. Pide uno nuevo a tu veterinaria.'; end if;
+  if cp.scan is null then raise exception 'La clínica no filmó su cara. Regístrala tú desde la app.'; end if;
+  select * into o from profiles where id = auth.uid();
+  select name into c from clinics where id = cp.clinic_id;
+  insert into pets (owner_id, name, owner_name, diseases, vaccines, photo, species, breed)
+  values (auth.uid(), cp.name, coalesce(nullif(trim(concat_ws(' ', o.first_name, o.last_name)), ''), o.name, ''),
+          coalesce(nullif(cp.allergies, ''), ''), 'Las registra ' || c, cp.photo, coalesce(cp.species, ''), left(coalesce(cp.breed, ''), 80))
+  returning id into new_id;
+  insert into pet_samples (pet_id, kind, dino, mobilenet, basic)
+  select new_id, s.kind, s.dino, s.mobilenet, s.basic from bio_samples(cp.scan) s;
+  perform claim_transfer(p_code, new_id);
+  return new_id;
 end $$;
 
 -- ---------- Mapa de clínicas Kiltrazo (urgencias) ----------

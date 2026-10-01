@@ -4,7 +4,7 @@
 import { esc, toast, go } from '../../ui.js';
 import { createTransferCode } from '../data.js';
 import {
-  getPatient, listVisits, saveVisit, listVaccines, saveVaccine, deleteVaccine, currentDoses, listFiles, uploadFile,
+  getPatient, savePatient, listVisits, saveVisit, listVaccines, saveVaccine, deleteVaccine, currentDoses, listFiles, uploadFile,
   deleteFile, fileUrls, listAppointments, saveAppointment, today, localDay,
 } from '../data.js';
 import { avatar, speciesLine, sexLine, age, fmtDate, num, dueTone, dueLabel, waLink, lineChart, KINDS } from '../ui.js';
@@ -78,7 +78,13 @@ export default async function patient(el, { id, tab }, ctx) {
           </div>
           ${!p.petId ? `<div class="card ck-transfer">
             <h3>Pasar a la app del tutor</h3>
-            <p class="small muted">El tutor recibe a ${esc(p.name)} en su Kiltrazo con estos datos y foto, y desde ahí ve sus vacunas y pide horas.</p>
+            <p class="small muted">El tutor recibe a ${esc(p.name)} en su Kiltrazo con sus datos, y desde ahí ve sus vacunas y pide horas.</p>
+            ${p.scan
+              ? '<p class="small ck-scan-ok">✓ Cara filmada: el tutor no tendrá que filmarla. <button class="link small" id="ck-scan">Filmar de nuevo</button></p>'
+              : `<p class="small"><b>1.</b> Filma su cara (así el tutor solo toca "Agregar").</p>
+                 <button class="btn small ghost" id="ck-scan">📷 Filmar su cara</button>
+                 <p class="small"><b>2.</b> Envía el enlace al tutor.</p>`}
+            <div id="ck-scanner" hidden></div>
             <button class="btn small secondary" id="ck-transfer">Crear enlace para el tutor</button>
             <div id="ck-transfer-out" hidden></div>
           </div>` : ''}
@@ -86,6 +92,27 @@ export default async function patient(el, { id, tab }, ctx) {
         </aside>
       </div>
     </div>`;
+
+  // Escaneo de la cara en la clínica (mismo que la app), guardado en la ficha.
+  el.querySelector('#ck-scan')?.addEventListener('click', async (e) => {
+    e.target.hidden = true;
+    const box = el.querySelector('#ck-scanner');
+    box.hidden = false;
+    const { mountScanner } = await import('../../scanner.js');
+    mountScanner(box, {
+      mode: 'enroll',
+      label: 'Empezar a filmar',
+      async onDone(result) {
+        try {
+          await savePatient({ id: p.id, scan: result.biometric, ...(p.photo ? {} : { photo: result.photo }) });
+          toast(`Cara de ${p.name} guardada`, 'ok');
+          ctx.refresh();
+        } catch (err) {
+          toast(err.message, 'bad');
+        }
+      },
+    });
+  });
 
   el.querySelector('#ck-transfer')?.addEventListener('click', async (e) => {
     e.target.disabled = true;

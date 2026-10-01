@@ -9,7 +9,7 @@ export const TRANSFER_KEY = 'kiltrazo-transfer';
 
 export default async function receive(el, { code }, { user }) {
   forget();
-  const { transferInfo, claimTransfer } = await import('../clinic/data.js');
+  const { transferInfo, claimTransfer, acceptTransfer } = await import('../clinic/data.js');
   const [info, pets] = await Promise.all([transferInfo(code).catch(() => null), myPets(user)]);
   if (!info) {
     forget();
@@ -25,7 +25,7 @@ export default async function receive(el, { code }, { user }) {
       <p class="muted">${esc([SPECIES[info.species], info.breed].filter(Boolean).join(' · '))}</p>
       <p>Al agregarla a tu Kiltrazo verás sus vacunas, te avisaremos antes de cada dosis y podrás pedir hora con ${esc(info.clinic)}.</p>
       <button class="btn primary big" data-new>Agregar a ${esc(info.name)}</button>
-      <p class="small muted">Te pediremos filmar su cara, para encontrarla si algún día se pierde.</p>
+      <p class="small muted">${info.hasScan ? `${esc(info.clinic)} ya filmó su cara: si algún día se pierde, Kiltrazo podrá reconocerla.` : 'Te pediremos filmar su cara, para encontrarla si algún día se pierde.'}</p>
     </div>
     ${pets.length ? `
       <div class="card">
@@ -36,7 +36,19 @@ export default async function receive(el, { code }, { user }) {
         </div>
       </div>` : ''}`;
 
-  el.querySelector('[data-new]').addEventListener('click', () => {
+  el.querySelector('[data-new]').addEventListener('click', async (e) => {
+    if (info.hasScan) {
+      e.target.disabled = true;
+      try {
+        await acceptTransfer(code);
+        toast(`¡${info.name} ya está en tu Kiltrazo! 🎉`, 'ok');
+        return go('#/perfil');
+      } catch (err) {
+        toast(err.message, 'bad');
+        e.target.disabled = false;
+        return;
+      }
+    }
     try { localStorage.setItem(TRANSFER_KEY, JSON.stringify({ code, ...info })); } catch { /* sin almacenamiento */ }
     go('#/registrar');
   });

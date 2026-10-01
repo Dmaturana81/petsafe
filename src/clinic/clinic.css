@@ -241,3 +241,6 @@ body.clinic-mode #view { padding: 0; display: block; }
 .ck-transfer #ck-transfer-out { display: grid; justify-items: center; gap: 8px; margin-top: 8px; text-align: center; }
 .ck-transfer-qr { width: 170px; height: 170px; border-radius: 12px; background: #fff; }
 .ck-req-grid[hidden] { display: none; }
+.ck-scan-ok { color: var(--green-dark); font-weight: 700; }
+.ck-transfer #ck-scanner { margin: 8px 0; }
+.ck-transfer p { margin: 6px 0; }

@@ -156,6 +156,11 @@ export async function transferInfo(code) {
   return camel(await run(sb().rpc('transfer_info', { p_code: code })));
 }
 
+/** Crea la mascota del tutor con el escaneo que hizo la clínica. */
+export async function acceptTransfer(code) {
+  return run(sb().rpc('accept_transfer', { p_code: code }));
+}
+
 export async function claimTransfer(code, petId) {
   return run(sb().rpc('claim_transfer', { p_code: code, p_pet: petId }));
 }
