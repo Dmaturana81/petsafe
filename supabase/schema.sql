@@ -584,6 +584,11 @@ begin
   update comments set user_id = auth.uid() where user_id = f;
   update contacts set user_id = auth.uid() where user_id = f;
   update push_subscriptions set user_id = auth.uid() where user_id = f;
+  -- Kiltrazo Clínica (las tablas se crean más abajo; existen al correr esto).
+  if to_regclass('public.clinic_patients') is not null then
+    update clinic_patients set tutor_user = auth.uid() where tutor_user = f;
+    update pet_codes set owner_id = auth.uid() where owner_id = f;
+  end if;
   -- El perfil del dispositivo solo pasa si la cuenta aún no tiene uno.
   if not exists (select 1 from profiles where id = auth.uid()) then
     update profiles set id = auth.uid() where id = f;
@@ -730,3 +735,403 @@ drop policy if exists "borrar fotos de entrenamiento" on storage.objects;
 create policy "borrar fotos de entrenamiento" on storage.objects for delete using (
   bucket_id = 'entrenamiento' and (public.is_admin() or exists (
     select 1 from public.pets p where p.id::text = (storage.foldername(objects.name))[1] and p.owner_id = auth.uid())));
+
+-- ==========================================================================
+-- ---------- Kiltrazo Clínica (fase 1) ----------
+-- Software para veterinarias dentro de la misma app (#/clinica). Solo agrega
+-- tablas nuevas: lo anterior sigue igual. Cada clínica ve solo lo suyo; el
+-- tutor solo comparte su mascota mostrando un código (create_pet_code) y ve
+-- sus vacunas y horas, nunca las notas clínicas.
+
+create table if not exists public.clinics (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(name) between 1 and 120),
+  address text not null default '',
+  phone text not null default '',
+  created_by uuid default auth.uid() references auth.users on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- Equipo: 'vet' (veterinario) o 'recepcion'. is_admin: quien maneja el equipo.
+create table if not exists public.clinic_members (
+  clinic_id uuid not null references public.clinics on delete cascade,
+  user_id uuid not null references auth.users on delete cascade,
+  name text not null default '',
+  role text not null default 'vet' check (role in ('vet', 'recepcion')),
+  is_admin boolean not null default false,
+  created_at timestamptz not null default now(),
+  primary key (clinic_id, user_id)
+);
+create index if not exists clinic_members_user on public.clinic_members (user_id);
+
+-- Códigos para sumar gente al equipo (un uso, vencen en 7 días).
+create table if not exists public.clinic_invites (
+  code text primary key,
+  clinic_id uuid not null references public.clinics on delete cascade,
+  role text not null default 'vet' check (role in ('vet', 'recepcion')),
+  created_at timestamptz not null default now()
+);
+
+-- Pacientes de la clínica. pet_id: la mascota de Kiltrazo, si el tutor la
+-- vinculó con su código; tutor_user recibe los recordatorios en la app.
+create table if not exists public.clinic_patients (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics on delete cascade,
+  pet_id uuid references public.pets on delete set null,
+  name text not null check (char_length(name) between 1 and 80),
+  species text not null default '',
+  breed text not null default '',
+  sex text not null default '' check (sex in ('', 'macho', 'hembra')),
+  neutered boolean not null default false,
+  birth_date date,
+  chip text not null default '',
+  color text not null default '',
+  allergies text not null default '',
+  notes text not null default '',
+  tutor_name text not null default '',
+  tutor_phone text not null default '',
+  tutor_email text not null default '',
+  tutor_user uuid references auth.users on delete set null,
+  photo text,
+  created_at timestamptz not null default now()
+);
+create index if not exists clinic_patients_clinic on public.clinic_patients (clinic_id, name);
+create index if not exists clinic_patients_pet on public.clinic_patients (pet_id);
+
+-- Consultas (ficha clínica). Solo los veterinarios las escriben.
+create table if not exists public.clinic_visits (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics on delete cascade,
+  patient_id uuid not null references public.clinic_patients on delete cascade,
+  vet_id uuid default auth.uid() references auth.users on delete set null,
+  vet_name text not null default '',
+  visited_at timestamptz not null default now(),
+  template text not null default '',
+  reason text not null default '',
+  anamnesis text not null default '',
+  exam text not null default '',
+  weight numeric(6, 2),
+  temperature numeric(4, 1),
+  heart_rate int,
+  resp_rate int,
+  mucous text not null default '',
+  diagnosis text not null default '',
+  treatment text not null default '',
+  next_control date,
+  created_at timestamptz not null default now()
+);
+create index if not exists clinic_visits_patient on public.clinic_visits (patient_id, visited_at desc);
+
+-- Vacunas y desparasitaciones. reminded_at: ya se avisó al tutor de la próxima dosis.
+create table if not exists public.clinic_vaccines (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics on delete cascade,
+  patient_id uuid not null references public.clinic_patients on delete cascade,
+  kind text not null default 'vacuna' check (kind in ('vacuna', 'desparasitacion_interna', 'desparasitacion_externa')),
+  name text not null check (char_length(name) between 1 and 80),
+  applied_on date not null default current_date,
+  next_due date,
+  batch text not null default '',
+  vet_name text not null default '',
+  reminded_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists clinic_vaccines_patient on public.clinic_vaccines (patient_id);
+create index if not exists clinic_vaccines_due on public.clinic_vaccines (clinic_id, next_due);
+
+-- Exámenes y documentos: el archivo va al bucket privado "clinica", en
+-- clinica/<clinic_id>/<patient_id>/...
+create table if not exists public.clinic_files (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics on delete cascade,
+  patient_id uuid not null references public.clinic_patients on delete cascade,
+  visit_id uuid references public.clinic_visits on delete set null,
+  name text not null default '',
+  path text not null,
+  mime text not null default '',
+  size int not null default 0,
+  uploaded_from text not null default '',
+  uploaded_by uuid default auth.uid() references auth.users on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists clinic_files_patient on public.clinic_files (patient_id, created_at desc);
+
+-- Agenda y sala de espera.
+create table if not exists public.clinic_appointments (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics on delete cascade,
+  patient_id uuid references public.clinic_patients on delete set null,
+  patient_name text not null default '',
+  vet_id uuid references auth.users on delete set null,
+  service text not null default 'consulta' check (service in ('consulta', 'control', 'vacuna', 'cirugia', 'peluqueria', 'otro')),
+  starts_at timestamptz not null,
+  minutes int not null default 30 check (minutes between 5 and 600),
+  status text not null default 'agendada'
+    check (status in ('agendada', 'en_sala', 'en_atencion', 'atendida', 'no_vino', 'cancelada')),
+  arrived_at timestamptz,
+  notes text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists clinic_appointments_day on public.clinic_appointments (clinic_id, starts_at);
+
+-- Código que el tutor muestra en su app para compartir su mascota con una
+-- clínica (un uso, vence en 24 horas).
+create table if not exists public.pet_codes (
+  code text primary key,
+  pet_id uuid not null references public.pets on delete cascade,
+  owner_id uuid not null default auth.uid() references auth.users on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create or replace function public.is_clinic_member(p_clinic uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from clinic_members where clinic_id = p_clinic and user_id = auth.uid());
+$$;
+
+-- Para las reglas del bucket, donde la carpeta es texto.
+create or replace function public.is_clinic_folder(p_folder text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from clinic_members where clinic_id::text = p_folder and user_id = auth.uid());
+$$;
+
+create or replace function public.is_clinic_vet(p_clinic uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from clinic_members where clinic_id = p_clinic and user_id = auth.uid() and role = 'vet');
+$$;
+
+create or replace function public.is_clinic_admin(p_clinic uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from clinic_members where clinic_id = p_clinic and user_id = auth.uid() and is_admin);
+$$;
+
+-- Códigos fáciles de dictar: sin 0/O ni 1/I/L.
+create or replace function public.short_code(n int default 6) returns text
+language sql volatile as $$
+  select string_agg(substr('ABCDEFGHJKMNPQRSTUVWXYZ23456789', 1 + floor(random() * 31)::int, 1), '')
+  from generate_series(1, n);
+$$;
+
+-- Para crear o unirse a una clínica hay que entrar con correo y clave, así
+-- el mismo equipo entra desde el computador y desde el celular.
+create or replace function public.require_account() returns void
+language plpgsql stable as $$
+begin
+  if auth.uid() is null or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
+    raise exception 'Primero entra con tu correo y clave';
+  end if;
+end $$;
+
+create or replace function public.create_clinic(
+  p_name text, p_address text, p_phone text, p_member_name text, p_role text default 'vet'
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  perform require_account();
+  insert into clinics (name, address, phone, created_by)
+  values (trim(p_name), coalesce(p_address, ''), coalesce(p_phone, ''), auth.uid()) returning id into c;
+  insert into clinic_members (clinic_id, user_id, name, role, is_admin)
+  values (c, auth.uid(), coalesce(p_member_name, ''), coalesce(nullif(p_role, ''), 'vet'), true);
+  return c;
+end $$;
+
+create or replace function public.create_clinic_invite(p_clinic uuid, p_role text) returns text
+language plpgsql security definer set search_path = public as $$
+declare c text;
+begin
+  if not is_clinic_admin(p_clinic) then raise exception 'Solo quien administra la clínica'; end if;
+  delete from clinic_invites where created_at < now() - interval '7 days';
+  loop
+    c := short_code(6);
+    exit when not exists (select 1 from clinic_invites where code = c);
+  end loop;
+  insert into clinic_invites (code, clinic_id, role) values (c, p_clinic, p_role);
+  return c;
+end $$;
+
+create or replace function public.join_clinic(p_code text, p_member_name text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare i clinic_invites;
+begin
+  perform require_account();
+  delete from clinic_invites where code = upper(trim(p_code)) and created_at > now() - interval '7 days'
+  returning * into i;
+  if i.code is null then raise exception 'El código no existe o ya venció. Pide uno nuevo.'; end if;
+  insert into clinic_members (clinic_id, user_id, name, role)
+  values (i.clinic_id, auth.uid(), coalesce(p_member_name, ''), i.role)
+  on conflict (clinic_id, user_id) do update set role = excluded.role, name = excluded.name;
+  return i.clinic_id;
+end $$;
+
+-- El tutor pide un código para su mascota.
+create or replace function public.create_pet_code(p_pet uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare c text;
+begin
+  if not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
+    raise exception 'Mascota no encontrada';
+  end if;
+  delete from pet_codes where pet_id = p_pet or created_at < now() - interval '1 day';
+  loop
+    c := short_code(6);
+    exit when not exists (select 1 from pet_codes where code = c);
+  end loop;
+  insert into pet_codes (code, pet_id, owner_id) values (c, p_pet, auth.uid());
+  return c;
+end $$;
+
+-- La clínica usa el código: la mascota queda como paciente, con los datos de
+-- contacto del tutor (que los compartió al mostrar el código).
+create or replace function public.link_pet(p_clinic uuid, p_code text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare pc pet_codes; p pets; o profiles; pid uuid;
+begin
+  if not is_clinic_member(p_clinic) then raise exception 'No eres parte de esta clínica'; end if;
+  delete from pet_codes where code = upper(trim(p_code)) and created_at > now() - interval '1 day'
+  returning * into pc;
+  if pc.code is null then raise exception 'El código no existe o ya venció. Pide al tutor que genere otro.'; end if;
+  select * into p from pets where id = pc.pet_id;
+  select * into o from profiles where id = p.owner_id;
+
+  select id into pid from clinic_patients where clinic_id = p_clinic and pet_id = p.id;
+  if pid is null then
+    insert into clinic_patients (clinic_id, pet_id, name, species, breed, allergies, notes, photo,
+      tutor_name, tutor_phone, tutor_email, tutor_user)
+    values (p_clinic, p.id, p.name, p.species, p.breed, '',
+      trim(both E'\n' from concat_ws(E'\n',
+        nullif('Enfermedades (según el tutor): ' || nullif(p.diseases, ''), ''),
+        nullif('Vacunas (según el tutor): ' || nullif(p.vaccines, ''), ''))),
+      p.photo,
+      coalesce(nullif(trim(concat_ws(' ', o.first_name, o.last_name)), ''), o.name, p.owner_name),
+      coalesce(o.phone, ''), coalesce(o.email, ''), p.owner_id)
+    returning id into pid;
+  else
+    update clinic_patients set tutor_user = p.owner_id,
+      tutor_name = coalesce(nullif(trim(concat_ws(' ', o.first_name, o.last_name)), ''), o.name, tutor_name),
+      tutor_phone = coalesce(nullif(o.phone, ''), tutor_phone), tutor_email = coalesce(nullif(o.email, ''), tutor_email)
+    where id = pid;
+  end if;
+  return pid;
+end $$;
+
+-- El tutor deja de compartir su mascota con una clínica: la clínica conserva
+-- su ficha (es su registro clínico), pero sin enlace ni avisos al tutor.
+create or replace function public.unlink_pet(p_pet uuid, p_clinic uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
+    raise exception 'Mascota no encontrada';
+  end if;
+  update clinic_patients set pet_id = null, tutor_user = null where pet_id = p_pet and clinic_id = p_clinic;
+  return true;
+end $$;
+
+-- Lo que el tutor ve de su mascota en las clínicas: vacunas y próximas horas
+-- (sin notas clínicas).
+create or replace function public.pet_health(p_pet uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
+    raise exception 'Mascota no encontrada';
+  end if;
+  return jsonb_build_object(
+    'clinics', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name, 'phone', c.phone, 'address', c.address))
+      from clinics c where c.id in (select clinic_id from clinic_patients where pet_id = p_pet)), '[]'::jsonb),
+    'vaccines', coalesce((select jsonb_agg(jsonb_build_object('kind', v.kind, 'name', v.name, 'applied_on', v.applied_on,
+        'next_due', v.next_due, 'clinic', c.name) order by v.applied_on desc)
+      from clinic_vaccines v join clinic_patients cp on cp.id = v.patient_id join clinics c on c.id = v.clinic_id
+      where cp.pet_id = p_pet), '[]'::jsonb),
+    'appointments', coalesce((select jsonb_agg(jsonb_build_object('starts_at', a.starts_at, 'service', a.service, 'clinic', c.name)
+        order by a.starts_at)
+      from clinic_appointments a join clinic_patients cp on cp.id = a.patient_id join clinics c on c.id = a.clinic_id
+      where cp.pet_id = p_pet and a.starts_at >= now() and a.status = 'agendada'), '[]'::jsonb));
+end $$;
+
+-- Recordatorio en la app al tutor 7 días antes de cada próxima dosis (una
+-- vez por dosis). Lo corre pg_cron cada mañana y también la app de la
+-- clínica al abrirse, por si pg_cron no está.
+create or replace function public.send_vaccine_reminders() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  with due as (
+    update clinic_vaccines v set reminded_at = now()
+    from clinic_patients cp
+    where cp.id = v.patient_id and cp.tutor_user is not null and v.reminded_at is null
+      and v.next_due between current_date and current_date + 7
+      -- Si ya se puso una dosis más nueva, la anterior no se recuerda.
+      and not exists (select 1 from clinic_vaccines w where w.patient_id = v.patient_id
+        and lower(w.name) = lower(v.name) and w.applied_on > v.applied_on)
+    returning v.*, cp.tutor_user, cp.name as pet_name
+  )
+  insert into notifications (user_id, type, title, body, url)
+  select d.tutor_user, 'info',
+    case when d.kind = 'vacuna' then 'Se acerca la vacuna de ' else 'Se acerca la desparasitación de ' end || d.pet_name || ' 💉',
+    d.name || ' el ' || to_char(d.next_due, 'DD-MM-YYYY') || ' en ' || c.name || '.', '#/perfil'
+  from due d join clinics c on c.id = d.clinic_id;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+do $$ begin
+  if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
+    create extension if not exists pg_cron;
+    perform cron.schedule('kiltrazo-recordatorios-vacunas', '0 12 * * *', 'select public.send_vaccine_reminders()');
+  end if;
+exception when others then null;
+end $$;
+
+alter table public.clinics enable row level security;
+alter table public.clinic_members enable row level security;
+alter table public.clinic_invites enable row level security;
+alter table public.clinic_patients enable row level security;
+alter table public.clinic_visits enable row level security;
+alter table public.clinic_vaccines enable row level security;
+alter table public.clinic_files enable row level security;
+alter table public.clinic_appointments enable row level security;
+alter table public.pet_codes enable row level security;
+
+drop policy if exists "ver mi clínica" on public.clinics;
+create policy "ver mi clínica" on public.clinics for select using (is_clinic_member(id) or is_admin());
+drop policy if exists "editar mi clínica" on public.clinics;
+create policy "editar mi clínica" on public.clinics for update using (is_clinic_admin(id));
+
+drop policy if exists "ver mi equipo" on public.clinic_members;
+create policy "ver mi equipo" on public.clinic_members for select using (is_clinic_member(clinic_id) or is_admin());
+drop policy if exists "admin de clínica edita equipo" on public.clinic_members;
+create policy "admin de clínica edita equipo" on public.clinic_members for update using (is_clinic_admin(clinic_id));
+drop policy if exists "admin de clínica quita del equipo" on public.clinic_members;
+create policy "admin de clínica quita del equipo" on public.clinic_members for delete
+  using (is_clinic_admin(clinic_id) and user_id <> auth.uid());
+
+do $$
+declare t text;
+begin
+  foreach t in array array['clinic_patients', 'clinic_vaccines', 'clinic_files', 'clinic_appointments'] loop
+    execute format('drop policy if exists "equipo de la clínica" on public.%I', t);
+    execute format('create policy "equipo de la clínica" on public.%I for all using (is_clinic_member(clinic_id)) with check (is_clinic_member(clinic_id))', t);
+  end loop;
+end $$;
+
+drop policy if exists "equipo ve consultas" on public.clinic_visits;
+create policy "equipo ve consultas" on public.clinic_visits for select using (is_clinic_member(clinic_id));
+drop policy if exists "veterinario registra consultas" on public.clinic_visits;
+create policy "veterinario registra consultas" on public.clinic_visits for insert with check (is_clinic_vet(clinic_id));
+drop policy if exists "veterinario edita consultas" on public.clinic_visits;
+create policy "veterinario edita consultas" on public.clinic_visits for update using (is_clinic_vet(clinic_id));
+drop policy if exists "veterinario borra consultas" on public.clinic_visits;
+create policy "veterinario borra consultas" on public.clinic_visits for delete using (is_clinic_vet(clinic_id));
+
+-- Bucket privado de exámenes (máximo 10 MB por archivo).
+insert into storage.buckets (id, name, public, file_size_limit) values ('clinica', 'clinica', false, 10485760)
+on conflict (id) do nothing;
+
+drop policy if exists "clínica sube exámenes" on storage.objects;
+create policy "clínica sube exámenes" on storage.objects for insert to authenticated with check (
+  bucket_id = 'clinica' and public.is_clinic_folder((storage.foldername(objects.name))[1]));
+drop policy if exists "clínica ve exámenes" on storage.objects;
+create policy "clínica ve exámenes" on storage.objects for select using (
+  bucket_id = 'clinica' and public.is_clinic_folder((storage.foldername(objects.name))[1]));
+drop policy if exists "clínica borra exámenes" on storage.objects;
+create policy "clínica borra exámenes" on storage.objects for delete using (
+  bucket_id = 'clinica' and public.is_clinic_folder((storage.foldername(objects.name))[1]));

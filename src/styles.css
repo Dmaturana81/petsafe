@@ -469,3 +469,15 @@ details[open] > summary { display: none; }
 .score-bar b.lo { background: #c9b8ab; }
 .score-bar .mark { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: 0.35; z-index: 1; }
 .tone-test { color: #4f7fb8; }
+
+/* Mi veterinaria (Kiltrazo Clínica) en el perfil */
+.pet-vet-btn { padding: 4px 0 0 66px; text-align: left; }
+.pet-vet { margin: 8px 0 4px; padding: 12px 14px; background: var(--cream); border-radius: 16px; }
+.pet-vet h3 { margin: 0 0 6px; font-size: 0.9rem; }
+.vet-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.vet-list li { display: grid; font-size: 0.9rem; }
+.vet-list small { color: var(--muted); }
+.vet-list b.late { color: #b3402a; }
+.vet-code-out { display: grid; justify-items: center; gap: 8px; margin-top: 8px; }
+.vet-code-big { font-size: 2rem; letter-spacing: 0.25em; font-weight: 900; }
+.my-pets .pet-vet img.vet-qr { width: 180px; height: 180px; object-fit: contain; border-radius: 12px; background: #fff; }

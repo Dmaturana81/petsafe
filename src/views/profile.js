@@ -75,6 +75,8 @@ export default async function profile(el, _params, { user, refresh }) {
               <span><strong>${esc(p.name)}</strong><small>${[describe(p), p.status === 'lost' ? '🔴 Perdida' : '🟢 En casa'].filter(Boolean).map(esc).join(' · ')}</small></span>
               <button class="btn small secondary" data-editpet aria-label="Editar ${esc(p.name)}">Editar</button>
             </div>
+            <button class="link small pet-vet-btn" data-vet>🩺 Mi veterinaria: vacunas y horas</button>
+            <div class="pet-vet" hidden></div>
             <form class="form pet-edit" hidden>
               <label>Nombre<input name="name" required value="${esc(p.name)}"></label>
               <label>Tipo<select name="species">
@@ -206,6 +208,16 @@ export default async function profile(el, _params, { user, refresh }) {
       li.querySelector('[data-editpet]').hidden = open;
     };
     li.querySelector('[data-editpet]').addEventListener('click', () => toggle(true));
+    // Kiltrazo Clínica: código para la veterinaria y carnet de vacunas (se carga al abrir).
+    li.querySelector('[data-vet]').addEventListener('click', async () => {
+      const box = li.querySelector('.pet-vet');
+      box.hidden = !box.hidden;
+      if (!box.hidden && !box.dataset.ready) {
+        box.dataset.ready = '1';
+        const { mountPetVet } = await import('./pet-vet.js');
+        mountPetVet(box, pet);
+      }
+    });
     form.querySelector('[data-cancel]').addEventListener('click', () => { form.reset(); toggle(false); });
     form.species.addEventListener('change', () => {
       li.querySelector('datalist').innerHTML = breedOptions(form.species.value);
