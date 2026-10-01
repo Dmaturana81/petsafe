@@ -1301,7 +1301,7 @@ create or replace function public.request_appointment(
   p_address text default '', p_lat double precision default null, p_lng double precision default null, p_notes text default ''
 ) returns uuid
 language plpgsql security definer set search_path = public as $$
-declare cp clinic_patients; c clinics; a_id uuid;
+declare cp clinic_patients; c clinics; a_id uuid; v_vet uuid;
 begin
   select * into cp from clinic_patients
   where clinic_id = p_clinic and pet_id = p_pet and pet_id in (select id from pets where owner_id = auth.uid());
@@ -1314,11 +1314,17 @@ begin
   if (select count(*) from clinic_appointments where patient_id = cp.id and status = 'solicitada') >= 3 then
     raise exception 'Ya tienes horas esperando confirmación en esta clínica';
   end if;
-  insert into clinic_appointments (clinic_id, patient_id, patient_name, service, starts_at, status, place, address, lat, lng, notes, requested_by)
+  -- Si los veterinarios cargaron sus días de trabajo, la hora debe estar libre
+  -- (con el traslado, si es a domicilio) y queda reservada a ese veterinario.
+  if has_schedule(p_clinic, p_place) then
+    v_vet := free_vet(p_clinic, p_place, p_starts_at);
+    if v_vet is null then raise exception 'Esa hora ya no está disponible. Elige otra.'; end if;
+  end if;
+  insert into clinic_appointments (clinic_id, patient_id, patient_name, service, starts_at, status, place, address, lat, lng, notes, requested_by, vet_id)
   values (p_clinic, cp.id, cp.name, coalesce(nullif(p_service, ''), 'consulta'), p_starts_at, 'solicitada', p_place,
     case when p_place = 'domicilio' then left(trim(p_address), 200) else '' end,
     case when p_place = 'domicilio' then p_lat end, case when p_place = 'domicilio' then p_lng end,
-    left(coalesce(p_notes, ''), 300), auth.uid())
+    left(coalesce(p_notes, ''), 300), auth.uid(), v_vet)
   returning id into a_id;
   if p_place = 'domicilio' then update clinic_patients set tutor_address = left(trim(p_address), 200) where id = cp.id; end if;
   insert into notifications (user_id, type, title, body, url)
@@ -1486,3 +1492,105 @@ language sql stable security definer set search_path = public as $$
   limit 100;
 $$;
 grant execute on function public.nearby_clinics(double precision, double precision, double precision) to anon, authenticated;
+
+-- ---------- Días de trabajo de cada veterinario y traslado a domicilio ----------
+-- Cada veterinario indica qué días atiende en esta clínica o a domicilio, y en
+-- qué horario. schedule = {"1": {"place": "clinica", "from": "09:00", "to": "18:00"}, ...}
+-- con 1 = lunes ... 7 = domingo. Un día sin entrada = no atiende aquí (por
+-- ejemplo, trabaja en otra clínica). Entre visitas a domicilio se deja el
+-- tiempo de traslado de la clínica. Si nadie cargó horario, la app deja pedir
+-- cualquier hora, como antes.
+alter table public.clinic_members add column if not exists schedule jsonb not null default '{}'::jsonb;
+alter table public.clinics add column if not exists travel_minutes int not null default 30;
+alter table public.clinics drop constraint if exists clinics_travel_minutes_check;
+alter table public.clinics add constraint clinics_travel_minutes_check check (travel_minutes between 0 and 180);
+
+-- Minutos de una hora en el día (texto 'HH:MI').
+create or replace function public.hm(t text) returns int
+language sql immutable as $$ select split_part(t, ':', 1)::int * 60 + split_part(t, ':', 2)::int $$;
+
+create or replace function public.has_schedule(p_clinic uuid, p_place text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from clinic_members m, jsonb_each(m.schedule) d
+    where m.clinic_id = p_clinic and m.role = 'vet' and d.value->>'place' = p_place);
+$$;
+
+-- Un veterinario que atiende en ese lugar a esa hora y no tiene otra hora
+-- encima (a domicilio, contando el traslado antes y después).
+create or replace function public.free_vet(p_clinic uuid, p_place text, p_at timestamptz, p_minutes int default 30)
+returns uuid language sql stable security definer set search_path = public as $$
+  with loc as (select (p_at at time zone 'America/Santiago') as t),
+  c as (select case when p_place = 'domicilio' then travel_minutes else 0 end as gap from clinics where id = p_clinic)
+  select m.user_id from clinic_members m, loc, c
+  where m.clinic_id = p_clinic and m.role = 'vet'
+    and m.schedule -> extract(isodow from loc.t)::text ->> 'place' = p_place
+    and extract(hour from loc.t) * 60 + extract(minute from loc.t) >= hm(m.schedule -> extract(isodow from loc.t)::text ->> 'from')
+    and extract(hour from loc.t) * 60 + extract(minute from loc.t) + p_minutes <= hm(m.schedule -> extract(isodow from loc.t)::text ->> 'to')
+    and not exists (
+      select 1 from clinic_appointments a
+      where a.vet_id = m.user_id and a.status not in ('cancelada', 'no_vino')
+        and a.starts_at < p_at + make_interval(mins => p_minutes + case when a.place = 'domicilio' or p_place = 'domicilio' then c.gap else 0 end)
+        and a.starts_at + make_interval(mins => a.minutes + case when a.place = 'domicilio' or p_place = 'domicilio' then c.gap else 0 end) > p_at)
+  order by (select count(*) from clinic_appointments a where a.vet_id = m.user_id and a.starts_at::date = p_at::date), m.created_at
+  limit 1;
+$$;
+
+-- Horas libres de los próximos días para el tutor: {configured, days: [{day, times: ['09:00', ...]}]}.
+create or replace function public.available_slots(p_clinic uuid, p_place text, p_days int default 14) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare d date; t int; at_ timestamptz; times jsonb; out_ jsonb := '[]'::jsonb; lo int; hi int;
+begin
+  if auth.uid() is null then raise exception 'Sin sesión'; end if;
+  if not has_schedule(p_clinic, p_place) then return jsonb_build_object('configured', false, 'days', '[]'::jsonb); end if;
+  for d in select generate_series((now() at time zone 'America/Santiago')::date, (now() at time zone 'America/Santiago')::date + least(p_days, 31), '1 day')::date loop
+    select min(hm(m.schedule -> extract(isodow from d)::text ->> 'from')), max(hm(m.schedule -> extract(isodow from d)::text ->> 'to'))
+      into lo, hi from clinic_members m
+      where m.clinic_id = p_clinic and m.role = 'vet' and m.schedule -> extract(isodow from d)::text ->> 'place' = p_place;
+    continue when lo is null;
+    times := '[]'::jsonb;
+    t := lo;
+    while t + 30 <= hi loop
+      at_ := (d + make_interval(mins => t)) at time zone 'America/Santiago';
+      if at_ > now() + interval '1 hour' and free_vet(p_clinic, p_place, at_) is not null then
+        times := times || to_jsonb(lpad((t / 60)::text, 2, '0') || ':' || lpad((t % 60)::text, 2, '0'));
+      end if;
+      t := t + 30;
+    end loop;
+    if jsonb_array_length(times) > 0 then out_ := out_ || jsonb_build_object('day', d, 'times', times); end if;
+  end loop;
+  return jsonb_build_object('configured', true, 'days', out_);
+end $$;
+
+-- Lo guarda el mismo veterinario, o quien administra la clínica. No deja
+-- cruzar horarios con los días que esa persona trabaja en otra clínica Kiltrazo.
+create or replace function public.save_schedule(p_clinic uuid, p_user uuid, p_schedule jsonb) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare d record; other text;
+begin
+  if p_user <> auth.uid() and not is_clinic_admin(p_clinic) then raise exception 'Solo tú o quien administra la clínica'; end if;
+  for d in select key, value from jsonb_each(coalesce(p_schedule, '{}'::jsonb)) loop
+    if d.key not in ('1','2','3','4','5','6','7') or d.value->>'place' not in ('clinica', 'domicilio')
+       or d.value->>'from' !~ '^\d\d:\d\d$' or d.value->>'to' !~ '^\d\d:\d\d$' or hm(d.value->>'from') >= hm(d.value->>'to') then
+      raise exception 'Revisa el horario: la hora de término debe ser después de la de inicio';
+    end if;
+    select c.name into other from clinic_members m join clinics c on c.id = m.clinic_id
+    where m.user_id = p_user and m.clinic_id <> p_clinic and m.schedule ? d.key
+      and hm(m.schedule -> d.key ->> 'from') < hm(d.value->>'to') and hm(m.schedule -> d.key ->> 'to') > hm(d.value->>'from')
+    limit 1;
+    if other is not null then raise exception 'Ese horario se cruza con el que tiene en %', other; end if;
+  end loop;
+  update clinic_members set schedule = coalesce(p_schedule, '{}'::jsonb) where clinic_id = p_clinic and user_id = p_user;
+  return found;
+end $$;
+
+-- Días que cada persona del equipo trabaja en otras clínicas Kiltrazo (el
+-- nombre de la otra clínica solo se le muestra a la misma persona).
+create or replace function public.busy_elsewhere(p_clinic uuid)
+returns table (user_id uuid, dow text, from_hm text, to_hm text, clinic text)
+language sql stable security definer set search_path = public as $$
+  select o.user_id, d.key, d.value->>'from', d.value->>'to', case when o.user_id = auth.uid() then c.name else '' end
+  from clinic_members me join clinic_members o on o.clinic_id <> p_clinic
+    and o.user_id in (select user_id from clinic_members where clinic_id = p_clinic)
+  join clinics c on c.id = o.clinic_id, jsonb_each(o.schedule) d
+  where me.clinic_id = p_clinic and me.user_id = auth.uid();
+$$;

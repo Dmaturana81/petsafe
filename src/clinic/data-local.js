@@ -96,6 +96,7 @@ export async function saveClinic(c) {
   return update('clinics', c.id, {
     name: c.name, address: c.address, phone: c.phone, homeVisits: Boolean(c.homeVisits),
     lat: c.lat ?? null, lng: c.lng ?? null, onMap: Boolean(c.onMap), emergencies: Boolean(c.emergencies), hours: c.hours || '',
+    travelMinutes: c.travelMinutes ?? 30,
   });
 }
 
@@ -237,10 +238,15 @@ export async function requestAppointment({ petId, clinicId, place, service, star
   if (place === 'domicilio' && !clinic.homeVisits) throw new Error('Esta clínica no hace visitas a domicilio');
   if (place === 'domicilio' && !address.trim()) throw new Error('Falta la dirección');
   if (startsAt < now()) throw new Error('Elige una fecha futura');
+  let vetId = null;
+  if (await hasSchedule(clinicId, place)) {
+    vetId = await freeVet(clinicId, place, startsAt);
+    if (!vetId) throw new Error('Esa hora ya no está disponible. Elige otra.');
+  }
   const a = await insert('clinic_appointments', {
     clinicId, patientId: cp.id, patientName: cp.name, service, startsAt, status: 'solicitada', place, minutes: 30,
     address: place === 'domicilio' ? address.trim() : '', lat: place === 'domicilio' ? lat : null, lng: place === 'domicilio' ? lng : null,
-    notes: notes.slice(0, 300), requestedBy: me.id, vetId: null,
+    notes: notes.slice(0, 300), requestedBy: me.id, vetId,
   });
   if (place === 'domicilio') await update('clinic_patients', cp.id, { tutorAddress: address.trim() });
   await tellClinic(clinicId, 'Nueva solicitud de hora 📅', `${cp.name} · ${SERVICE[service] || 'Hora'}${place === 'domicilio' ? ' a domicilio' : ''} · ${when(startsAt)}`, '#/clinica/solicitudes');
@@ -330,4 +336,85 @@ export async function nearbyClinics(lat = null, lng = null, km = 50) {
     .filter((c) => c.km == null || c.km <= km)
     .sort((a, b) => (b.emergencies - a.emergencies) || ((a.km ?? 0) - (b.km ?? 0)) || a.name.localeCompare(b.name))
     .slice(0, 100);
+}
+
+// ---------- Días de trabajo y horas libres (mismas reglas que supabase/schema.sql) ----------
+
+const hm = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const isoDow = (d) => String(d.getDay() || 7);
+
+async function vets(clinicId) {
+  return (await list('clinic_members', { clinicId })).filter((m) => m.role === 'vet');
+}
+
+async function hasSchedule(clinicId, place) {
+  return (await vets(clinicId)).some((m) => Object.values(m.schedule || {}).some((d) => d.place === place));
+}
+
+async function freeVet(clinicId, place, at, minutes = 30) {
+  const clinic = await get('clinics', clinicId);
+  const gap = place === 'domicilio' ? clinic.travelMinutes ?? 30 : 0;
+  const t = new Date(at);
+  const mins = t.getHours() * 60 + t.getMinutes();
+  const appts = (await all('clinic_appointments')).filter((a) => !['cancelada', 'no_vino'].includes(a.status));
+  for (const m of await vets(clinicId)) {
+    const d = m.schedule?.[isoDow(t)];
+    if (d?.place !== place || mins < hm(d.from) || mins + minutes > hm(d.to)) continue;
+    const busy = appts.some((a) => {
+      if (a.vetId !== m.userId) return false;
+      const g = a.place === 'domicilio' || place === 'domicilio' ? gap : 0;
+      const s = new Date(a.startsAt).getTime();
+      return s < t.getTime() + (minutes + g) * 60000 && s + ((a.minutes || 30) + g) * 60000 > t.getTime();
+    });
+    if (!busy) return m.userId;
+  }
+  return null;
+}
+
+export async function availableSlots(clinicId, place, days = 14) {
+  if (!(await hasSchedule(clinicId, place))) return { configured: false, days: [] };
+  const team = await vets(clinicId);
+  const out = [];
+  const z = (n) => String(n).padStart(2, '0');
+  for (let i = 0; i <= Math.min(days, 31); i++) {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + i);
+    const today = team.map((m) => m.schedule?.[isoDow(d)]).filter((x) => x?.place === place);
+    if (!today.length) continue;
+    const lo = Math.min(...today.map((x) => hm(x.from)));
+    const hi = Math.max(...today.map((x) => hm(x.to)));
+    const times = [];
+    for (let t = lo; t + 30 <= hi; t += 30) {
+      const at = new Date(d);
+      at.setHours(Math.floor(t / 60), t % 60, 0, 0);
+      if (at.getTime() > Date.now() + 3600000 && (await freeVet(clinicId, place, at.toISOString()))) times.push(`${z(Math.floor(t / 60))}:${z(t % 60)}`);
+    }
+    if (times.length) out.push({ day: `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`, times });
+  }
+  return { configured: true, days: out };
+}
+
+export async function saveSchedule(clinicId, userId, schedule) {
+  for (const [k, d] of Object.entries(schedule)) {
+    if (hm(d.from) >= hm(d.to)) throw new Error('Revisa el horario: la hora de término debe ser después de la de inicio');
+    for (const m of (await all('clinic_members')).filter((x) => x.userId === userId && x.clinicId !== clinicId)) {
+      const o = m.schedule?.[k];
+      if (o && hm(o.from) < hm(d.to) && hm(o.to) > hm(d.from)) throw new Error(`Ese horario se cruza con el que tiene en ${(await get('clinics', m.clinicId))?.name}`);
+    }
+  }
+  const m = await get('clinic_members', `${clinicId}:${userId}`);
+  await put('clinic_members', { ...m, schedule });
+  return true;
+}
+
+export async function busyElsewhere(clinicId) {
+  const me = await app.currentUser();
+  const ids = new Set((await list('clinic_members', { clinicId })).map((m) => m.userId));
+  const out = [];
+  for (const m of (await all('clinic_members')).filter((x) => ids.has(x.userId) && x.clinicId !== clinicId)) {
+    const name = m.userId === me.id ? (await get('clinics', m.clinicId))?.name : '';
+    for (const [dow, d] of Object.entries(m.schedule || {})) out.push({ userId: m.userId, dow, fromHm: d.from, toHm: d.to, clinic: name });
+  }
+  return out;
 }

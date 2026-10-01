@@ -68,9 +68,10 @@ export async function removeMember(clinicId, userId) {
   return run(sb().from('clinic_members').delete().eq('clinic_id', clinicId).eq('user_id', userId));
 }
 
-export async function saveClinic({ id, name, address, phone, homeVisits, lat = null, lng = null, onMap, emergencies, hours = '' }) {
+export async function saveClinic({ id, name, address, phone, homeVisits, lat = null, lng = null, onMap, emergencies, hours = '', travelMinutes = 30 }) {
   return run(sb().from('clinics').update({
     name, address, phone, home_visits: Boolean(homeVisits), lat, lng, on_map: Boolean(onMap), emergencies: Boolean(emergencies), hours,
+    travel_minutes: travelMinutes,
   }).eq('id', id));
 }
 
@@ -169,4 +170,20 @@ export async function claimTransfer(code, petId) {
 
 export async function nearbyClinics(lat = null, lng = null, km = 50) {
   return (await run(sb().rpc('nearby_clinics', { p_lat: lat, p_lng: lng, p_km: km }))).map(camel);
+}
+
+// ---------- Días de trabajo y horas libres ----------
+
+export async function saveSchedule(clinicId, userId, schedule) {
+  return run(sb().rpc('save_schedule', { p_clinic: clinicId, p_user: userId, p_schedule: schedule }));
+}
+
+/** Días que el equipo trabaja en otras clínicas: [{ userId, dow, fromHm, toHm, clinic }]. */
+export async function busyElsewhere(clinicId) {
+  return (await run(sb().rpc('busy_elsewhere', { p_clinic: clinicId }))).map(camel);
+}
+
+/** { configured, days: [{ day, times }] } */
+export async function availableSlots(clinicId, place, days = 14) {
+  return run(sb().rpc('available_slots', { p_clinic: clinicId, p_place: place, p_days: days }));
 }

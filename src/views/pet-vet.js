@@ -5,7 +5,7 @@
 
 import { esc, toast, getLocation } from '../ui.js';
 import { currentUser } from '../data.js';
-import { createPetCode, petHealth, unlinkPet, requestAppointment, cancelMyAppointment } from '../clinic/data.js';
+import { createPetCode, petHealth, unlinkPet, requestAppointment, cancelMyAppointment, availableSlots } from '../clinic/data.js';
 
 const SERVICES = { consulta: 'Consulta', control: 'Control', vacuna: 'Vacuna', cirugia: 'Cirugía', peluqueria: 'Peluquería', otro: 'Hora' };
 const STATUS = {
@@ -106,7 +106,8 @@ function bookForm(clinics) {
     <label>Motivo<select name="service">
       ${Object.entries(SERVICES).filter(([k]) => k !== 'cirugia').map(([k, v]) => `<option value="${k}">${v === 'Hora' ? 'Otro' : v}</option>`).join('')}
     </select></label>
-    <label>Día y hora que te acomoda<input type="datetime-local" name="when" required value="${tomorrowAt10()}"></label>
+    <label class="vet-free">Día y hora que te acomoda<input type="datetime-local" name="when" required value="${tomorrowAt10()}"></label>
+    <div class="vet-slots" hidden></div>
     <div class="vet-address" hidden>
       <label>Dirección para la visita<input name="address" autocomplete="street-address" placeholder="Calle, número, depto, comuna"></label>
       <button type="button" class="link small" data-here>📍 Usar mi ubicación actual (para que lleguen más fácil)</button>
@@ -121,6 +122,48 @@ async function bindBook(form, openBtn, clinics, pet, reload) {
   let point = null;
   const user = await currentUser().catch(() => null);
   form.address.value = user?.address || '';
+  // Horas libres según los días de trabajo de los veterinarios; si la clínica
+  // no los cargó, se elige cualquier día y hora y la clínica confirma.
+  let slot = null;
+  let asked = '';
+  let showTimes = () => {};
+  const slotsBox = form.querySelector('.vet-slots');
+  const dayName = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
+  const loadSlots = async (c, place) => {
+    const key = `${c.id}|${place}`;
+    if (key === asked) return;
+    asked = key;
+    slot = null;
+    let r = { configured: false, days: [] };
+    try { r = await availableSlots(c.id, place); } catch (err) { console.warn('Horas libres', err); }
+    if (asked !== key) return;
+    form.querySelector('.vet-free').hidden = r.configured;
+    form.when.required = !r.configured;
+    slotsBox.hidden = !r.configured;
+    if (!r.configured) return;
+    if (!r.days.length) {
+      slotsBox.innerHTML = `<p class="small">No quedan horas libres ${place === 'domicilio' ? 'a domicilio ' : ''}en los próximos días.${c.phone ? ` Llama a la clínica: <a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</p>`;
+      return;
+    }
+    slotsBox.innerHTML = `
+      <b>Elige el día</b>
+      <div class="vet-chips" data-days>${r.days.map((d, i) => `<button type="button" class="vet-chip ${i ? '' : 'on'}" data-day="${d.day}">${dayName(d.day)}</button>`).join('')}</div>
+      <b>y la hora</b>
+      <div class="vet-chips" data-times></div>`;
+    showTimes = (day) => {
+      slot = null;
+      slotsBox.querySelector('[data-times]').innerHTML = r.days.find((d) => d.day === day).times
+        .map((t) => `<button type="button" class="vet-chip" data-time="${day}T${t}">${t}</button>`).join('');
+    };
+    showTimes(r.days[0].day);
+  };
+  slotsBox.addEventListener('click', (e) => {
+    const b = e.target.closest('.vet-chip');
+    if (!b) return;
+    b.parentElement.querySelectorAll('.vet-chip').forEach((x) => x.classList.toggle('on', x === b));
+    if (b.dataset.day) showTimes(b.dataset.day);
+    else slot = b.dataset.time;
+  });
   const sync = () => {
     const c = clinics.find((x) => x.id === form.clinic.value) || clinics[0];
     const home = form.querySelector('[data-home]');
@@ -129,6 +172,7 @@ async function bindBook(form, openBtn, clinics, pet, reload) {
     const isHome = form.place.value === 'domicilio';
     form.querySelector('.vet-address').hidden = !isHome;
     form.address.required = isHome;
+    loadSlots(c, form.place.value);
   };
   sync();
   form.addEventListener('change', sync);
@@ -140,13 +184,14 @@ async function bindBook(form, openBtn, clinics, pet, reload) {
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!slotsBox.hidden && !slot) return toast('Elige una hora', 'bad');
     const btn = form.querySelector('button:not([type])');
     btn.disabled = true;
     const place = form.place.value;
     try {
       await requestAppointment({
         petId: pet.id, clinicId: form.clinic.value, place, service: form.service.value,
-        startsAt: new Date(form.when.value).toISOString(),
+        startsAt: new Date(slotsBox.hidden ? form.when.value : slot).toISOString(),
         address: place === 'domicilio' ? form.address.value : '',
         lat: place === 'domicilio' ? point?.lat ?? null : null, lng: place === 'domicilio' ? point?.lng ?? null : null,
         notes: form.notes.value,

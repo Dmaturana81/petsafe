@@ -520,3 +520,8 @@ details[open] > summary { display: none; }
 .receive { text-align: center; }
 .receive-photo { width: 140px; height: 140px; object-fit: cover; border-radius: 28px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 3rem; background: var(--peach); }
 .form .vet-place input { width: 20px; height: 20px; padding: 0; flex: none; }
+.vet-free[hidden], .vet-slots[hidden] { display: none; }
+.vet-slots { display: grid; gap: 8px; }
+.vet-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.vet-chip { font: inherit; font-size: 0.9rem; font-weight: 700; padding: 8px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+.vet-chip.on { background: var(--sun); border-color: var(--sun); }

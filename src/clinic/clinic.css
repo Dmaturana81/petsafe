@@ -244,3 +244,31 @@ body.clinic-mode #view { padding: 0; display: block; }
 .ck-scan-ok { color: var(--green-dark); font-weight: 700; }
 .ck-transfer #ck-scanner { margin: 8px 0; }
 .ck-transfer p { margin: 6px 0; }
+
+/* Días de trabajo */
+.ck-sched { margin-top: 16px; gap: 0; }
+.ck-sched > p { margin: 0 0 8px; }
+.ck-sched-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ck-sched-head h2 { margin: 0; }
+.ck-sched-row { display: grid; grid-template-columns: 110px auto 1fr; gap: 6px 14px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.ck-seg { display: inline-flex; border: 2px solid var(--line); border-radius: 12px; overflow: hidden; }
+.form .ck-seg label { display: block; font-weight: 700; }
+.ck-seg input { position: absolute; opacity: 0; pointer-events: none; }
+.ck-seg span { display: block; padding: 7px 12px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.ck-seg label + label span { border-left: 2px solid var(--line); }
+.ck-seg input:checked + span { background: var(--sun); }
+.ck-seg input[value="clinica"]:checked + span { background: #e3f2e5; }
+.ck-seg input[value="domicilio"]:checked + span { background: #e2ecf8; }
+.ck-sched-hours { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+.ck-sched-hours[hidden] { display: none; }
+.form .ck-sched-hours input { width: 7.5em; padding: 7px 8px; }
+.ck-sched-other { grid-column: 2 / -1; color: #8a6200; font-weight: 700; }
+@media (max-width: 760px) {
+  .ck-sched-row { grid-template-columns: 1fr; }
+  .ck-sched-other { grid-column: 1; }
+}
+.ck-sched-head .ck-select { width: auto; max-width: 60%; }
+@media (max-width: 760px) {
+  .ck-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ck-seg span { text-align: center; padding: 8px 4px; }
+}

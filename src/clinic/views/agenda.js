@@ -82,6 +82,9 @@ export default async function agenda(el, { day = today() }, ctx) {
     const f = Object.fromEntries(new FormData(form));
     const p = findPatient(patients, f.patient);
     const home = !form.dataset.walkin && f.place === 'domicilio';
+    const start = new Date(`${f.day}T${f.time}`);
+    const clash = home && f.vetId && f.day === day && tooClose(list, f.vetId, start, Number(f.minutes) || 30, clinic.travelMinutes ?? 30);
+    if (clash && !confirm(`Queda a menos de ${clinic.travelMinutes ?? 30} minutos de traslado de la visita de ${clash.patientName} (${fmtTime(clash.startsAt)}). ¿Guardar igual?`)) return;
     try {
       const saved = await saveAppointment({
         clinicId: clinic.id, patientId: p?.id || null, patientName: p?.name || f.patient.split(' · ')[0].trim(),
@@ -221,6 +224,16 @@ function openPatient(a) {
   if (a.patientId) return go(`#/clinica/paciente/${a.patientId}`);
   try { sessionStorage.setItem('ck-new-patient', JSON.stringify({ name: a.patientName, apptId: a.id })); } catch { /* sin almacenamiento */ }
   go('#/clinica/pacientes/nuevo');
+}
+
+/** Otra hora del mismo veterinario sin tiempo de traslado entre medio. */
+function tooClose(list, vetId, start, minutes, gap) {
+  return list.find((a) => {
+    if (a.vetId !== vetId || ['cancelada', 'no_vino'].includes(a.status)) return false;
+    const g = a.place === 'domicilio' ? gap : 0;
+    const s = new Date(a.startsAt).getTime();
+    return s < start.getTime() + (minutes + gap) * 60000 && s + ((a.minutes || 30) + g) * 60000 > start.getTime();
+  });
 }
 
 function findPatient(patients, text) {
