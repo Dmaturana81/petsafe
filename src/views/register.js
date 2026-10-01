@@ -2,10 +2,15 @@ import { registerPet } from '../data.js';
 import { mountScanner } from '../scanner.js';
 import { esc, toast, go } from '../ui.js';
 import { SPECIES, breedOptions } from '../breeds.js';
+import { pendingTransfer, forget } from './receive.js';
 
 // Pantalla 1: registrar mascota (escaneo facial + datos).
 export default async function register(el, _params, { user }) {
+  // Viene de "#/recibir": la veterinaria ya envió nombre, tipo y raza.
+  const t = pendingTransfer();
+  const fromVet = t?.waiting ? null : t;
   el.innerHTML = `
+    ${fromVet ? `<div class="alert-strip ok">Ficha de <strong>${esc(fromVet.name)}</strong> enviada por ${esc(fromVet.clinic)}. Solo falta filmar su cara.</div>` : ''}
     <div class="card">
       <div class="steps"><span class="on">1 · Escanear</span><span>2 · Datos</span></div>
       <h1>Registrar mascota</h1>
@@ -56,6 +61,12 @@ export default async function register(el, _params, { user }) {
   form.species.addEventListener('change', () => {
     el.querySelector('#breeds').innerHTML = breedOptions(form.species.value);
   });
+  if (fromVet) {
+    form.name.value = fromVet.name || '';
+    form.species.value = fromVet.species || '';
+    form.breed.value = fromVet.breed || '';
+    form.vaccines.value = `Las registra ${fromVet.clinic}`;
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -72,6 +83,18 @@ export default async function register(el, _params, { user }) {
       biometric: scan.biometric,
       crops: f.get('train') ? scan.crops : null,
     });
+    if (fromVet) {
+      try {
+        const { claimTransfer } = await import('../clinic/data.js');
+        await claimTransfer(fromVet.code, pet.id);
+        forget();
+        toast(`¡${pet.name} quedó registrada y unida a ${fromVet.clinic}! 🎉`, 'ok');
+        return go('#/perfil');
+      } catch (err) {
+        toast(`${pet.name} quedó registrada, pero no pudimos unirla a la clínica: ${err.message}`, 'bad');
+        return go('#/');
+      }
+    }
     toast(`¡${pet.name} quedó registrada! 🎉`, 'ok');
     go('#/');
   });

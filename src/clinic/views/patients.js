@@ -67,10 +67,15 @@ export async function patientForm(el, { id }, { clinic }) {
       <label class="ck-span2">N° de chip<input name="chip" inputmode="numeric" value="${v('chip')}"></label>
       <label class="ck-span">Alergias<input name="allergies" value="${v('allergies')}" placeholder="Ej.: amoxicilina"></label>
       <label class="ck-span">Notas<textarea name="notes" rows="2">${v('notes')}</textarea></label>
+      <div class="ck-span ck-photo-row">
+        <img class="ck-avatar big" id="ck-photo-prev" src="${v('photo')}" alt="" ${p.photo ? '' : 'hidden'}>
+        <label class="btn small ghost">📷 ${p.photo ? 'Cambiar foto' : 'Agregar foto'}<input type="file" accept="image/*" hidden id="ck-photo"></label>
+      </div>
       <h2 class="ck-span">Tutor</h2>
       <label class="ck-span2">Nombre<input name="tutorName" value="${v('tutorName')}" autocomplete="off"></label>
       <label>Teléfono<input name="tutorPhone" type="tel" value="${v('tutorPhone')}" placeholder="+56 9 1234 5678"></label>
       <label>Correo<input name="tutorEmail" type="email" value="${v('tutorEmail')}"></label>
+      <label class="ck-span">Dirección (para visitas a domicilio)<input name="tutorAddress" value="${v('tutorAddress')}" placeholder="Calle, número, depto, comuna"></label>
       <div class="ck-span ck-row-end">
         <a class="btn ghost small" href="${id ? `#/clinica/paciente/${id}` : '#/clinica/pacientes'}">Cancelar</a>
         <button class="btn primary small">${id ? 'Guardar cambios' : 'Crear ficha'}</button>
@@ -79,6 +84,15 @@ export async function patientForm(el, { id }, { clinic }) {
 
   const form = el.querySelector('#ck-pform');
   form.species.addEventListener('change', () => { el.querySelector('#ck-breeds').innerHTML = breedOptions(form.species.value); });
+  let photo;
+  el.querySelector('#ck-photo').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    photo = await smallPhoto(file);
+    const prev = el.querySelector('#ck-photo-prev');
+    prev.src = photo;
+    prev.hidden = false;
+  });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(form));
@@ -86,8 +100,9 @@ export async function patientForm(el, { id }, { clinic }) {
       clinicId: clinic.id, name: f.name.trim(), species: f.species, breed: f.breed.trim(), sex: f.sex, neutered: Boolean(f.neutered),
       birthDate: f.birthDate || null, color: f.color.trim(), chip: f.chip.trim(), allergies: f.allergies.trim(), notes: f.notes.trim(),
       tutorName: f.tutorName.trim(), tutorPhone: f.tutorPhone.trim(), tutorEmail: f.tutorEmail.trim().toLowerCase(),
+      tutorAddress: f.tutorAddress.trim(), ...(photo ? { photo } : {}),
     };
-    const btn = form.querySelector('button');
+    const btn = form.querySelector('button.primary');
     btn.disabled = true;
     try {
       const saved = await savePatient(id ? { id, ...row } : row);
@@ -134,4 +149,18 @@ export function linkForm(el, { code = '' }, { clinic }) {
       btn.disabled = false;
     }
   });
+}
+
+/** Foto chica (400 px) guardada dentro de la ficha. */
+async function smallPhoto(file, max = 400) {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  img.close?.();
+  const url = canvas.toDataURL('image/jpeg', 0.82);
+  canvas.width = canvas.height = 0;
+  return url;
 }

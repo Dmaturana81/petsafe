@@ -5,6 +5,7 @@ import { SPECIES } from '../breeds.js';
 
 export const SERVICES = { consulta: 'Consulta', control: 'Control', vacuna: 'Vacuna', cirugia: 'Cirugía', peluqueria: 'Peluquería', otro: 'Otro' };
 export const STATUS = {
+  solicitada: 'Pedida por el tutor', en_camino: 'En camino',
   agendada: 'Agendada', en_sala: 'En sala', en_atencion: 'En atención', atendida: 'Atendida', no_vino: 'No vino', cancelada: 'Cancelada',
 };
 export const ROLES = { vet: 'Veterinario/a', recepcion: 'Recepción' };

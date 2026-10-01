@@ -1,6 +1,6 @@
 // Equipo de la clínica: quién entra, con qué rol, y códigos para invitar.
 
-import { esc, toast } from '../../ui.js';
+import { esc, toast, getLocation } from '../../ui.js';
 import { createInvite, removeMember, saveClinic } from '../data.js';
 import { ROLES } from '../ui.js';
 
@@ -34,6 +34,15 @@ export default function team(el, _params, ctx) {
             <label>Nombre<input name="name" required maxlength="120" value="${esc(clinic.name)}"></label>
             <label>Dirección<input name="address" value="${esc(clinic.address)}"></label>
             <label>Teléfono<input name="phone" type="tel" value="${esc(clinic.phone)}"></label>
+            <label>Horario<input name="hours" maxlength="120" value="${esc(clinic.hours || '')}" placeholder="Ej.: Lun a Vie 9 a 19, Sáb 10 a 14"></label>
+            <label class="ck-check"><input type="checkbox" name="homeVisits" ${clinic.homeVisits ? 'checked' : ''}> Hacemos visitas a domicilio (los tutores podrán pedirlas)</label>
+            <label class="ck-check"><input type="checkbox" name="emergencies" ${clinic.emergencies ? 'checked' : ''}> Atendemos urgencias</label>
+            <label class="ck-check"><input type="checkbox" name="onMap" ${clinic.onMap ? 'checked' : ''}> Aparecer en el mapa de clínicas de Kiltrazo (los tutores ven nombre, dirección, teléfono y horario)</label>
+            <div class="ck-map-pick">
+              <p class="small muted">Marca la clínica en el mapa (toca o arrastra la huella).</p>
+              <div class="ck-map" id="ck-map"></div>
+              <button type="button" class="link small" id="ck-here">📍 Estoy en la clínica: usar mi ubicación</button>
+            </div>
             <button class="btn primary small">Guardar</button>
           </form>` : '<div class="card"><p>Solo quien administra la clínica puede invitar o quitar personas.</p></div>'}
         <div class="card">
@@ -66,11 +75,29 @@ export default function team(el, _params, ctx) {
     ctx.refresh();
   }));
 
+  // Ubicación de la clínica para el mapa de urgencias.
+  let point = clinic.lat != null && clinic.lng != null ? { lat: clinic.lat, lng: clinic.lng } : null;
+  const mapEl = el.querySelector('#ck-map');
+  if (mapEl) {
+    import('../../map.js').then(({ pickPoint }) => {
+      const picker = pickPoint(mapEl, point, (p) => { point = p; });
+      el.querySelector('#ck-here').addEventListener('click', async () => {
+        const loc = await getLocation();
+        loc ? picker.set(loc) : toast('No pudimos obtener tu ubicación', 'bad');
+      });
+    });
+  }
+
   el.querySelector('#ck-clinic')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
+    if (f.onMap && !point) return toast('Marca la clínica en el mapa para aparecer en él', 'bad');
     try {
-      await saveClinic({ id: clinic.id, name: f.name.trim(), address: f.address.trim(), phone: f.phone.trim() });
+      await saveClinic({
+        id: clinic.id, name: f.name.trim(), address: f.address.trim(), phone: f.phone.trim(), hours: f.hours.trim(),
+        homeVisits: Boolean(f.homeVisits), emergencies: Boolean(f.emergencies), onMap: Boolean(f.onMap),
+        lat: point?.lat ?? null, lng: point?.lng ?? null,
+      });
       toast('Datos guardados', 'ok');
       ctx.refresh();
     } catch (err) {

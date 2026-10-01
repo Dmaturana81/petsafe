@@ -2,6 +2,7 @@
 // curvas de peso y signos vitales.
 
 import { esc, toast, go } from '../../ui.js';
+import { createTransferCode } from '../data.js';
 import {
   getPatient, listVisits, saveVisit, listVaccines, saveVaccine, deleteVaccine, currentDoses, listFiles, uploadFile,
   deleteFile, fileUrls, listAppointments, saveAppointment, today, localDay,
@@ -75,10 +76,41 @@ export default async function patient(el, { id, tab }, ctx) {
               </div>`).join('') : '<p class="muted small">Sin registros.</p>'}
             ${p.tutorUser ? '<p class="muted small">El tutor recibe un aviso en su app Kiltrazo 7 días antes.</p>' : ''}
           </div>
+          ${!p.petId ? `<div class="card ck-transfer">
+            <h3>Pasar a la app del tutor</h3>
+            <p class="small muted">El tutor recibe a ${esc(p.name)} en su Kiltrazo con estos datos y foto, y desde ahí ve sus vacunas y pide horas.</p>
+            <button class="btn small secondary" id="ck-transfer">Crear enlace para el tutor</button>
+            <div id="ck-transfer-out" hidden></div>
+          </div>` : ''}
           ${p.notes ? `<div class="card"><h3>Notas</h3><p class="ck-pre small">${esc(p.notes)}</p></div>` : ''}
         </aside>
       </div>
     </div>`;
+
+  el.querySelector('#ck-transfer')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      const code = await createTransferCode(p.id);
+      const url = `${location.origin}${location.pathname}#/recibir/${code}`;
+      const msg = `Hola${p.tutorName ? ` ${p.tutorName.split(' ')[0]}` : ''}, te dejamos la ficha de ${p.name} en Kiltrazo, la app gratis donde verás sus vacunas y podrás pedir hora con nosotros: ${url}`;
+      const wa = waLink(p.tutorPhone);
+      const out = el.querySelector('#ck-transfer-out');
+      const QR = (await import('qrcode')).default;
+      out.hidden = false;
+      out.innerHTML = `
+        <img class="ck-transfer-qr" alt="QR para el tutor" src="${await QR.toDataURL(url, { margin: 1, width: 200, color: { dark: '#4a3428' } })}">
+        <p class="small">El tutor escanea el QR con su celular, o envíale el enlace. Sirve una vez y dura 7 días.</p>
+        <span class="ck-tutor-btns">
+          <a class="btn small whatsapp" href="${wa ? `${wa}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+          <button class="btn small ghost" data-copy>Copiar enlace</button>
+        </span>`;
+      out.querySelector('[data-copy]').addEventListener('click', () => navigator.clipboard?.writeText(url).then(() => toast('Enlace copiado', 'ok')));
+      e.target.hidden = true;
+    } catch (err) {
+      toast(err.message, 'bad');
+      e.target.disabled = false;
+    }
+  });
 
   const box = el.querySelector('#ck-tab');
   const draw = { consulta: drawVisitForm, historial: drawHistory, vacunas: drawVaccines, examenes: drawFiles, signos: drawVitals }[tab];

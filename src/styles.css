@@ -486,3 +486,37 @@ details[open] > summary { display: none; }
 .pick.selected { border-color: var(--green); background: #eef7ef; }
 .nearby-ask { border: 2px solid #f6c7b9; background: #fff6f1; }
 .lost-alert .lost-photo { width: 160px; height: 160px; object-fit: cover; border-radius: 24px; margin: 0 auto 12px; display: block; }
+.vet-appt-foot { display: flex; gap: 10px; align-items: center; }
+.vet-status { font-size: 0.78rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--peach); }
+.vet-status.ok { background: #e1f2e3; color: #2f6b38; }
+.vet-status.go { background: #fff1c2; }
+.vet-book { margin: 10px 0 18px; }
+.vet-place { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.vet-place label.pick { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 700; padding: 10px; }
+.vet-place .pick[hidden] { display: none; }
+.vet-address { display: grid; gap: 6px; }
+.vet-address[hidden] { display: none; }
+
+/* Clínicas cercanas (urgencias) */
+.alert-strip.ok { background: #e1f2e3; color: #2f6b38; margin-bottom: 12px; }
+.clinics-cta { margin-bottom: 12px; }
+.clinics-head h1 { margin-bottom: 4px; }
+.clinics-map { height: 260px; border-radius: 18px; overflow: hidden; margin-top: 10px; }
+.clinics-list { display: grid; gap: 10px; }
+.clinic-card { display: grid; gap: 6px; }
+.clinic-card.on { outline: 3px solid var(--sun); }
+.clinic-card p { margin: 0; }
+.clinic-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.clinic-km { font-size: 0.85rem; font-weight: 800; color: var(--muted); white-space: nowrap; }
+.clinic-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.clinic-tags:empty { display: none; }
+.clinic-tag { font-size: 0.75rem; font-weight: 800; padding: 2px 10px; border-radius: 999px; background: var(--cream); }
+.clinic-tag.urgent { background: #fde0da; color: #b3402a; }
+.clinic-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.clinic-btns .btn { padding: 12px 8px; }
+.clinic-btns .btn:only-child { grid-column: 1 / -1; }
+.clinic-marker span { font-size: 28px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.3)); }
+.clinic-marker.urgent span { font-size: 34px; }
+.receive { text-align: center; }
+.receive-photo { width: 140px; height: 140px; object-fit: cover; border-radius: 28px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 3rem; background: var(--peach); }
+.form .vet-place input { width: 20px; height: 20px; padding: 0; flex: none; }

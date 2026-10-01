@@ -1,7 +1,7 @@
 // Agenda del día y sala de espera.
 
 import { esc, toast, go } from '../../ui.js';
-import { listAppointments, saveAppointment, listPatients, today, addDays, localDay } from '../data.js';
+import { listAppointments, saveAppointment, listPatients, notifyAppointment, directions, today, addDays, localDay } from '../data.js';
 import { SERVICES, STATUS, fmtTime, fmtDay } from '../ui.js';
 
 export default async function agenda(el, { day = today() }, ctx) {
@@ -40,6 +40,8 @@ export default async function agenda(el, { day = today() }, ctx) {
       <label>Día<input name="day" type="date" required value="${day}"></label>
       <label>Hora<input name="time" type="time" required step="300" value="${nextSlot(list, day)}"></label>
       <label>Minutos<input name="minutes" type="number" min="5" max="600" step="5" value="30"></label>
+      ${clinic.homeVisits ? `<label>Lugar<select name="place"><option value="clinica">En la clínica</option><option value="domicilio">A domicilio</option></select></label>
+      <label class="ck-span2 ck-addr" hidden>Dirección<input name="address" placeholder="Calle, número, depto, comuna"></label>` : ''}
       <label class="ck-span2">Notas<input name="notes" placeholder="Ej.: viene con exámenes"></label>
       <div class="ck-span ck-row-end"><button type="button" class="btn ghost small" data-cancel>Cancelar</button><button class="btn primary small">Guardar hora</button></div>
     </form>
@@ -62,20 +64,35 @@ export default async function agenda(el, { day = today() }, ctx) {
   });
 
   const form = el.querySelector('#ck-appt');
+  // A domicilio: la dirección viene de la ficha del tutor, si la tiene.
+  const syncPlace = () => {
+    if (!form.place) return;
+    const home = form.place.value === 'domicilio';
+    form.querySelector('.ck-addr').hidden = !home;
+    form.address.required = home;
+    const p = findPatient(patients, form.patient.value);
+    if (home && !form.address.value && p?.tutorAddress) form.address.value = p.tutorAddress;
+  };
+  form.place?.addEventListener('change', syncPlace);
+  form.patient.addEventListener('change', syncPlace);
   el.querySelector('#ck-new').addEventListener('click', () => { delete form.dataset.walkin; form.hidden = false; form.patient.focus(); });
   form.querySelector('[data-cancel]').addEventListener('click', () => { form.reset(); form.hidden = true; delete form.dataset.walkin; });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(form));
     const p = findPatient(patients, f.patient);
+    const home = !form.dataset.walkin && f.place === 'domicilio';
     try {
-      await saveAppointment({
+      const saved = await saveAppointment({
         clinicId: clinic.id, patientId: p?.id || null, patientName: p?.name || f.patient.split(' · ')[0].trim(),
         service: f.service, vetId: f.vetId || null, startsAt: new Date(`${f.day}T${f.time}`).toISOString(),
         minutes: Number(f.minutes) || 30, notes: f.notes.trim(),
+        place: home ? 'domicilio' : 'clinica', address: home ? f.address.trim() : '',
         ...(form.dataset.walkin ? { status: 'en_sala', arrivedAt: new Date().toISOString() } : { status: 'agendada' }),
       });
-      toast('Hora guardada', 'ok');
+      // Si la mascota está en Kiltrazo, el tutor recibe la hora en su celular.
+      if (!form.dataset.walkin && p?.tutorUser) await tell(saved.id, 'confirmada');
+      toast(p?.tutorUser && !form.dataset.walkin ? 'Hora guardada. Le avisamos al tutor.' : 'Hora guardada', 'ok');
       f.day === day ? ctx.refresh() : go(`#/clinica/agenda/${f.day}`);
     } catch (err) {
       toast(err.message, 'bad');
@@ -118,12 +135,18 @@ export async function waiting(el, _params, ctx) {
 
 // ---------- Filas de la agenda ----------
 
-function apptRow(a, team, order = 0) {
+export function apptRow(a, team, order = 0) {
   const vet = team.find((m) => m.userId === a.vetId);
   const name = a.patientId ? `<a href="#/clinica/paciente/${a.patientId}">${esc(a.patientName)}</a>` : esc(a.patientName);
   const waited = a.status === 'en_sala' && a.arrivedAt ? Math.max(0, Math.round((Date.now() - new Date(a.arrivedAt)) / 60000)) : null;
+  const home = a.place === 'domicilio';
+  const route = home && directions(a);
   const actions = {
-    agendada: '<button class="btn small home" data-act="llego">Llegó</button><button class="btn small ghost" data-act="no_vino">No vino</button>',
+    solicitada: '<button class="btn small home" data-act="confirmar">Confirmar</button><button class="btn small ghost" data-act="rechazar">Rechazar</button>',
+    agendada: home
+      ? '<button class="btn small home" data-act="camino">Voy en camino</button><button class="btn small ghost" data-act="no_vino">No estaba</button>'
+      : '<button class="btn small home" data-act="llego">Llegó</button><button class="btn small ghost" data-act="no_vino">No vino</button>',
+    en_camino: '<button class="btn small home" data-act="llegue">Llegué</button>',
     en_sala: '<button class="btn small primary" data-act="atender">Atender</button>',
     en_atencion: '<button class="btn small primary" data-act="ficha">Abrir ficha</button><button class="btn small ghost" data-act="terminar">Terminar</button>',
   }[a.status] || '';
@@ -133,13 +156,19 @@ function apptRow(a, team, order = 0) {
       <span class="ck-appt-main">
         <strong>${name}</strong>
         <small>${SERVICES[a.service] || ''}${vet ? ` · ${esc(vet.name)}` : ''}${a.notes ? ` · ${esc(a.notes)}` : ''}${waited != null ? ` · esperando hace ${waited} min` : ''}</small>
+        ${home ? `<small class="ck-home">🏠 ${esc(a.address || 'A domicilio')}${route ? ` · <a href="${route.google}" target="_blank" rel="noopener">Cómo llegar</a>` : ''}</small>` : ''}
       </span>
       <span class="ck-pill ${a.status}">${STATUS[a.status]}</span>
       <span class="ck-row-actions">${actions}</span>
     </div>`;
 }
 
-function bindRows(el, list, ctx, redraw) {
+/** Avisa al tutor; si falla el aviso, la hora igual queda guardada. */
+export async function tell(id, kind) {
+  try { await notifyAppointment(id, kind); } catch (err) { console.warn('Aviso al tutor', err); }
+}
+
+export function bindRows(el, list, ctx, redraw) {
   el.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
@@ -147,6 +176,28 @@ function bindRows(el, list, ctx, redraw) {
     const act = btn.dataset.act;
     btn.disabled = true;
     try {
+      if (act === 'confirmar') {
+        Object.assign(a, await saveAppointment({ id: a.id, status: 'agendada' }));
+        await tell(a.id, 'confirmada');
+        toast('Confirmada. Le avisamos al tutor.', 'ok');
+        return ctx.refresh();
+      }
+      if (act === 'rechazar') {
+        if (!confirm(`¿Rechazar la hora de ${a.patientName}? Le avisaremos al tutor para que pida otra.`)) return (btn.disabled = false);
+        Object.assign(a, await saveAppointment({ id: a.id, status: 'cancelada' }));
+        await tell(a.id, 'rechazada');
+        return ctx.refresh();
+      }
+      if (act === 'camino') {
+        Object.assign(a, await saveAppointment({ id: a.id, status: 'en_camino', ...(!a.vetId && ctx.me.role === 'vet' ? { vetId: ctx.me.userId } : {}) }));
+        await tell(a.id, 'en_camino');
+        toast('Le avisamos al tutor que vas en camino 🚗', 'ok');
+      }
+      if (act === 'llegue') {
+        Object.assign(a, await saveAppointment({ id: a.id, status: 'en_atencion', arrivedAt: new Date().toISOString() }));
+        await tell(a.id, 'llego');
+        toast('Le avisamos al tutor que llegaste', 'ok');
+      }
       if (act === 'llego') Object.assign(a, await saveAppointment({ id: a.id, status: 'en_sala', arrivedAt: new Date().toISOString() }));
       if (act === 'no_vino') Object.assign(a, await saveAppointment({ id: a.id, status: 'no_vino' }));
       if (act === 'terminar') Object.assign(a, await saveAppointment({ id: a.id, status: 'atendida' }));

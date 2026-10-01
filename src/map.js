@@ -64,3 +64,22 @@ export const TRAVEL_MODES = [
 export function directionsUrl({ lat, lng }, mode) {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=${mode}`;
 }
+
+const clinicIcon = (urgent) => L.divIcon({
+  className: `clinic-marker${urgent ? ' urgent' : ''}`,
+  html: '<span>🏥</span>',
+  iconSize: [40, 40],
+  iconAnchor: [20, 36],
+});
+
+/** Clínicas en el mapa; al tocar una se llama onPick(clinic). */
+export function showClinics(el, clinics, here, onPick) {
+  const first = here || clinics[0] || { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] };
+  const map = base(el, [first.lat, first.lng], here ? 13 : 12);
+  if (here) L.circleMarker([here.lat, here.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#4f7fb8', fillOpacity: 1 }).addTo(map);
+  for (const c of clinics) {
+    L.marker([c.lat, c.lng], { icon: clinicIcon(c.emergencies), title: c.name }).addTo(map).on('click', () => onPick(c));
+  }
+  if (here && clinics.length) map.fitBounds(L.latLngBounds([[here.lat, here.lng], ...clinics.slice(0, 3).map((c) => [c.lat, c.lng])]).pad(0.2), { maxZoom: 15 });
+  return map;
+}
