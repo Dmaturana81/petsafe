@@ -3,12 +3,27 @@
 // computador muestra un QR para abrir la app en el celular, donde se escanea
 // la cara de la mascota.
 
+import { setPage } from '../seo.js';
+
+// Preguntas frecuentes: se muestran abajo y Google puede mostrarlas en sus resultados.
+const FAQ = [
+  ['¿Cuánto cuesta?', 'Nada. Kiltrazo es gratis para los dueños de mascotas, hoy y siempre.'],
+  ['¿Quién ve mis datos?', 'Tus datos de contacto solo los ven el administrador de Kiltrazo y la veterinaria que tú elijas. Cuando alguien encuentra a tu mascota, te avisamos a ti; no le mostramos tu dirección. Nunca vendemos ni compartimos la base de datos.'],
+  ['¿Funciona con gatos?', 'Sí. Puedes registrar perros, gatos y otras mascotas. El reconocimiento se midió con perros y seguimos mejorándolo.'],
+  ['¿Reemplaza al chip?', 'No, lo complementa. El chip necesita un lector; Kiltrazo funciona con cualquier celular, de inmediato.'],
+];
+
 const isPhone = () => matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const phoneShot = (src, alt, cls = '') => `<figure class="ld-phone ${cls}"><img src="landing/${src}.jpg" alt="${alt}" loading="lazy"></figure>`;
 
 export default async function landing(el) {
-  document.title = 'Kiltrazo · Si tu mascota se pierde, su cara la trae de vuelta';
+  setPage({
+    jsonLd: {
+      '@type': 'FAQPage',
+      mainEntity: FAQ.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+    },
+  });
   const phone = isPhone();
   const appUrl = `${location.origin}${location.pathname}#/perfil`;
 

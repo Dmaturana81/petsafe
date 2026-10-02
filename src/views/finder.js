@@ -4,6 +4,7 @@
 // página de cada uno para pedir hora.
 
 import { esc, getLocation } from '../ui.js';
+import { setPage } from '../seo.js';
 import { showClinics } from '../map.js';
 import { SPECIALTIES, specTags } from '../clinic/specialties.js';
 
@@ -11,7 +12,11 @@ const plain = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').to
 const kmText = (km) => (km == null ? '' : km < 1 ? 'a menos de 1 km' : `a ${String(km).replace('.', ',')} km`);
 
 export default async function finder(el) {
-  document.title = 'Encuentra veterinario · Kiltrazo';
+  setPage({
+    title: 'Encuentra veterinario cerca de ti · Kiltrazo',
+    description: 'Clínicas veterinarias y veterinarios a domicilio en Chile. Busca por comuna o especialidad, mira urgencias y pide hora en línea, con o sin la app.',
+    path: '/veterinarios/',
+  });
   el.innerHTML = '<div class="card"><p class="muted">Cargando veterinarios…</p></div>';
   const { nearbyClinics, listBanners, bannerClick } = await import('../clinic/data.js');
   let here = null;

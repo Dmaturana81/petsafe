@@ -4,6 +4,7 @@ import { esc, toast, go, afterSetup } from '../ui.js';
 import { SPECIES, breedOptions } from '../breeds.js';
 import { pendingTransfer, forget } from './receive.js';
 import { shouldOfferAccount } from './save-account.js';
+import { track } from '../analytics.js';
 
 // Pantalla 1: registrar mascota (escaneo facial + datos).
 export default async function register(el, _params, { user }) {
@@ -87,6 +88,7 @@ export default async function register(el, _params, { user }) {
       biometric: scan.biometric,
       crops: f.get('train') ? scan.crops : null,
     });
+    track('registro_mascota', { especie: pet.species || '' });
     if (fromVet) {
       try {
         const { claimTransfer } = await import('../clinic/data.js');

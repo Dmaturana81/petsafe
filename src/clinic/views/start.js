@@ -8,6 +8,7 @@ import { createClinic, joinClinic, saveClinic, saveSpecialties, setActiveClinic 
 import { specPick, readSpecs } from '../specialties.js';
 import { logoField, bindLogo } from '../logo.js';
 import { reviewFields, bindReview } from '../review.js';
+import { track } from '../../analytics.js';
 
 export default function start(el, { session, refresh, pendingCode }) {
   const intro = `
@@ -140,6 +141,7 @@ export default function start(el, { session, refresh, pendingCode }) {
     const onlyHome = d.kind === 'domicilio';
     const c = { name: d.name.trim(), address: d.address, phone: d.phone };
     const id = await createClinic({ ...c, memberName: d.memberName.trim(), role: onlyHome ? 'vet' : d.role });
+    track('crear_clinica', { tipo: onlyHome ? 'domicilio' : 'clinica' });
     if (d.onMap || d.emergencies || onlyHome || logo()) {
       await saveClinic({
         id, ...c, onlyHome, logo: logo() || undefined, homeVisits: onlyHome, onMap: Boolean(d.onMap), emergencies: !onlyHome && Boolean(d.emergencies),

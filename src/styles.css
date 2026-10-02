@@ -788,3 +788,21 @@ body.finder-mode #app { max-width: 1200px; padding: 0 16px 40px; }
 .ld-hero-text .ld-qr-box + .ld-alt { margin-top: 22px; }
 .admin-review { margin: 6px 0 0; line-height: 1.8; }
 .admin-review .warn { margin-top: 0; }
+
+/* Aviso de cookies (solo aparece si hay Google Analytics o píxel de Meta) */
+.cookie-bar {
+  position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 1100;
+  max-width: 536px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+  box-shadow: 0 8px 30px rgba(152, 92, 52, 0.18);
+}
+.cookie-bar p { margin: 0; font-size: 0.9rem; line-height: 1.4; }
+.cookie-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.cookie-btns .btn { flex: 1; }
+body.web-mode .cookie-bar, body.admin-mode .cookie-bar, body.clinic-mode .cookie-bar { bottom: calc(16px + env(safe-area-inset-bottom)); }
+@media (min-width: 900px) {
+  .cookie-bar { flex-direction: row; align-items: center; max-width: 860px; }
+  .cookie-btns .btn { flex: none; }
+}

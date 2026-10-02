@@ -6,7 +6,35 @@ import { esc, toast, go, isComplete, returnHereLater } from '../ui.js';
 import { currentUser, myPets } from '../data.js';
 import { bookForm, bindBook } from './pet-vet.js';
 import { installCard, bindInstall } from '../install.js';
-import { specTags } from '../clinic/specialties.js';
+import { specTags, SPECIALTIES } from '../clinic/specialties.js';
+import { setPage } from '../seo.js';
+import { SITE_URL } from '../config.js';
+
+// Ficha de la clínica para Google (schema.org/VeterinaryCare): puede salir con
+// su teléfono, dirección y mapa en los resultados.
+function clinicSeo(c) {
+  const kind = c.onlyHome ? 'Veterinario a domicilio' : 'Clínica veterinaria';
+  const where = c.address ? ` en ${c.address}` : '';
+  const extras = [c.emergencies && 'urgencias', ...(c.specialties || []).map((k) => SPECIALTIES[k]).filter(Boolean)].filter(Boolean);
+  const description = `${kind}${where}. ${extras.length ? `Atiende ${extras.join(', ').toLowerCase()}. ` : ''}Pide hora en línea con Kiltrazo.`.slice(0, 300);
+  const path = `/?c=${encodeURIComponent(c.slug)}`;
+  setPage({
+    title: `${c.name} · ${kind} · Pedir hora`,
+    description,
+    path,
+    jsonLd: {
+      '@type': 'VeterinaryCare',
+      name: c.name,
+      url: SITE_URL + path,
+      description,
+      ...(c.phone ? { telephone: c.phone } : {}),
+      ...(c.logo && /^https?:/.test(c.logo) ? { image: c.logo } : {}),
+      ...(c.address && !c.onlyHome ? { address: { '@type': 'PostalAddress', streetAddress: c.address, addressCountry: 'CL' } } : {}),
+      ...(c.onlyHome && c.address ? { areaServed: c.address } : {}),
+      ...(c.lat != null && !c.onlyHome ? { geo: { '@type': 'GeoCoordinates', latitude: c.lat, longitude: c.lng } } : {}),
+    },
+  });
+}
 
 const phoneLike = () => matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const wa = (phone) => {
@@ -34,7 +62,7 @@ export default async function clinicPage(el, { slug, step }) {
   const pets = isComplete(user) ? await myPets(user).catch(() => []) : [];
   const go_ = !c.onlyHome && c.lat != null ? directions(c) : null;
   const label = c.onlyHome ? 'Pedir visita a domicilio' : 'Pedir hora';
-  document.title = `${c.name} · Pedir hora`;
+  clinicSeo(c);
 
   el.innerHTML = `
     <div class="web-page">
