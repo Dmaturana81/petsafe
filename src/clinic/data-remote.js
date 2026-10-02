@@ -91,6 +91,10 @@ export async function setClinicAdmin(clinicId, userId, admin) {
   return run(sb().rpc('set_clinic_admin', { p_clinic: clinicId, p_user: userId, p_admin: admin }));
 }
 
+export async function approveClinic(clinicId, ok = true) {
+  return run(sb().rpc('admin_approve_clinic', { p_clinic: clinicId, p_ok: ok }));
+}
+
 export async function deleteClinic(clinicId) {
   return run(sb().rpc('admin_delete_clinic', { p_clinic: clinicId }));
 }

@@ -582,3 +582,7 @@ details[open] > summary { display: none; }
 .appt-btns { display: grid; gap: 8px; margin: 16px 0 10px; }
 .appt-state { margin: 16px 0 10px; padding: 10px 12px; border-radius: 12px; background: #f6efe9; font-weight: 600; }
 .appt-state.ok { background: #e6f4ea; color: #2f6b3c; }
+.admin-clinics + p, h2 .warn { font-size: 0.85rem; }
+h2 .warn { display: inline-block; vertical-align: middle; margin-left: 6px; background: #fff1d6; color: #8a5a00; border-radius: 999px; padding: 2px 10px; font-weight: 700; }
+.admin-clinic.pending .warn { background: #fff1d6; color: #8a5a00; }
+.admin-clinic.pending { background: #fffaf0; }

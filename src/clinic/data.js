@@ -8,7 +8,7 @@ import * as local from './data-local.js';
 const B = CLOUD ? remote : local;
 
 export const {
-  session, myClinics, members, removeMember, saveClinic, createClinic, joinClinic, createInvite, setClinicAdmin, allClinics, deleteClinic,
+  session, myClinics, members, removeMember, saveClinic, createClinic, joinClinic, createInvite, setClinicAdmin, allClinics, deleteClinic, approveClinic,
   linkPet, createPetCode, petHealth, unlinkPet, runReminders, fileUrls,
   requestAppointment, alertEmergency, cancelMyAppointment, myAppointment, confirmMyAppointment, notifyAppointment, createTransferCode, transferInfo, claimTransfer, acceptTransfer,
   nearbyClinics, saveSchedule, busyElsewhere, availableSlots,
