@@ -5,6 +5,7 @@
 import { esc, toast, go, isComplete, returnHereLater } from '../ui.js';
 import { currentUser, myPets } from '../data.js';
 import { bookForm, bindBook } from './pet-vet.js';
+import { installCard, bindInstall } from '../install.js';
 
 const phoneLike = () => matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const wa = (phone) => {
@@ -35,6 +36,7 @@ export default async function clinicPage(el, { slug, step }) {
   document.title = `${c.name} · Pedir hora`;
 
   el.innerHTML = `
+    <div class="web-page">
     <div class="card web-head">
       ${c.logo ? `<img src="${esc(c.logo)}" alt="${esc(c.name)}" class="web-logo">` : ''}
       <h1>${esc(c.name)}</h1>
@@ -53,18 +55,27 @@ export default async function clinicPage(el, { slug, step }) {
       <button class="btn primary big" data-book>📅 ${label}</button>
       <p class="web-by">by <img src="brand/kiltrazo.svg" alt="kiltrazo"> <b>Clínica</b></p>
     </div>
-    <div id="web-step"></div>`;
+    <div id="web-step"></div>
+    </div>`;
 
   const box = el.querySelector('#web-step');
   const bookBtn = el.querySelector('[data-book]');
-  const show = (html) => { box.innerHTML = html; box.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  // En el computador la página va en dos columnas y el paso se ve desde el inicio.
+  const wide = !phoneLike() && matchMedia('(min-width: 900px)').matches;
+  let quiet = wide;
+  const show = (html) => {
+    box.innerHTML = html;
+    if (!quiet) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    quiet = false;
+  };
 
   // Con la app y mascotas: igual que en Clínicas cercanas.
   const withApp = () => {
     show(`<form class="card form vet-book"><h2>${label}</h2>${bookForm([c], pets)}</form>`);
     const form = box.querySelector('form');
-    bindBook(form, null, [c], null, () => {
-      form.outerHTML = `<div class="card"><p class="clinic-done">✓ Solicitud enviada. Te avisaremos en la app cuando ${esc(c.name)} la confirme.</p></div>`;
+    bindBook(form, null, [c], null, async () => {
+      form.outerHTML = `<div class="card"><p class="clinic-done">✓ Solicitud enviada. Te avisaremos en la app cuando ${esc(c.name)} la confirme.</p></div>${await installCard()}`;
+      bindInstall(box);
     });
   };
 
@@ -73,18 +84,24 @@ export default async function clinicPage(el, { slug, step }) {
     const hasAccount = isComplete(user);
     show(`
       <div class="card web-app">
-        <img src="brand/kiltrazo.svg" alt="Kiltrazo" class="web-app-logo">
-        <h2>${hasAccount ? 'Registra a tu mascota para pedir hora' : 'Pide hora más rápido con la app Kiltrazo'}</h2>
+        <div class="web-app-top">
+          <img src="brand/kiltrazo.svg" alt="Kiltrazo" class="web-app-logo">
+          <h2>${hasAccount ? 'Registra a tu mascota para pedir hora' : 'Pide hora más rápido con la app Kiltrazo'}</h2>
+        </div>
+        <div class="web-app-info">
         <ul class="web-list">
           <li>🐶 Registras a tu mascota escaneando su cara, como Face ID.</li>
           <li>🔎 Si se pierde, Kiltrazo avisa a los vecinos y la reconoce cuando alguien la encuentra.</li>
           <li>📅 Pides hora en segundos, ves sus vacunas y te avisamos 1 hora antes.</li>
         </ul>
         <p class="small muted">Es gratis y se abre desde el navegador, sin descargar nada de una tienda.</p>
+        </div>
+        <div class="web-app-do">
         ${hasAccount ? '<button class="btn primary" data-register>🐶 Registrar a mi mascota</button>'
           : phoneLike() ? '<button class="btn primary" data-create>Crear mi cuenta en Kiltrazo</button>'
           : '<div class="web-qr"><span data-qr></span><p><b>Escanea con la cámara de tu celular</b> para crear tu cuenta. Después vuelves aquí para pedir hora.</p></div>'}
         <button class="link" data-guest>Prefiero pedir hora sin la app</button>
+        </div>
       </div>`);
     box.querySelector('[data-create]')?.addEventListener('click', () => { returnHereLater(here); go('#/perfil'); });
     box.querySelector('[data-register]')?.addEventListener('click', () => { returnHereLater(here); go('#/registrar'); });
@@ -136,5 +153,7 @@ export default async function clinicPage(el, { slug, step }) {
     });
   };
 
-  bookBtn.addEventListener('click', () => (pets.length ? withApp() : pitch()));
+  const open = () => (pets.length ? withApp() : pitch());
+  bookBtn.addEventListener('click', open);
+  if (wide) open();
 }

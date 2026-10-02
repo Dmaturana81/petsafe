@@ -4,6 +4,7 @@ import { currentUser, myNotifications, deliverPending, enablePush, finishEmailLi
 import { esc, isComplete } from './ui.js';
 import { unlockAudio, startAlarm, checkAlarms } from './alarm.js';
 import { refreshArea } from './nearby.js';
+import './install.js';
 
 import home from './views/home.js';
 import profile from './views/profile.js';

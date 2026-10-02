@@ -607,3 +607,25 @@ body.web-mode .tabbar, body.web-mode .topbar { display: none; }
 .web-qr p { margin: 0; font-size: 0.9rem; }
 .web-guest h3 { margin: 8px 0 0; }
 .web-head .clinic-btns .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+/* Página de la clínica en el computador: datos a la izquierda, pedir hora a la derecha. */
+.web-page { display: grid; gap: 16px; }
+.web-app-top, .web-app-info, .web-app-do { display: grid; gap: 10px; justify-items: center; width: 100%; }
+@media (min-width: 900px) {
+  body.web-mode #app { max-width: 1120px; padding: 32px 24px; }
+  .web-page { grid-template-columns: 380px 1fr; gap: 24px; align-items: start; }
+  .web-page > .card { margin: 0; }
+  .web-head { position: sticky; top: 24px; padding: 28px 24px; }
+  .web-app { grid-template-columns: 1fr 280px; gap: 18px 28px; text-align: left; align-items: start; padding: 28px; }
+  .web-app-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; justify-content: flex-start; }
+  .web-app-top h2 { font-size: 1.4rem; }
+  .web-app-info { justify-items: stretch; }
+  .web-app-do { background: var(--cream); border-radius: 18px; padding: 18px; text-align: center; }
+  .web-app-do .btn { width: 100%; }
+  #web-step .vet-book { padding: 28px; }
+}
+
+.install-card h2 { margin: 0 0 4px; }
+.install-card .btn { width: 100%; margin: 8px 0 4px; }
+.install-steps { margin: 8px 0 0; padding-left: 22px; display: grid; gap: 6px; }
+.install-ico { display: inline-block; border: 1.5px solid currentColor; border-radius: 4px; padding: 0 4px; font-size: 0.8em; }

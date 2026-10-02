@@ -4,13 +4,14 @@ import { esc, toast } from '../ui.js';
 
 export const clinicUrl = (slug) => `${location.origin}${location.pathname}?c=${encodeURIComponent(slug)}`;
 
+// NIC Chile tiene un "Redireccionamiento web" gratis: no hace falta otro servicio.
 const STEPS = (url) => [
-  ['Crea una cuenta gratis en Cloudflare', 'Entra a cloudflare.com, crea tu cuenta y toca “Agregar un dominio”. Escribe tu dominio (por ejemplo, veterinarialosaromos.cl) y elige el plan Free.'],
-  ['Copia los dos “servidores de nombres”', 'Cloudflare te muestra dos nombres parecidos a ana.ns.cloudflare.com y bob.ns.cloudflare.com.'],
-  ['Cámbialos en nic.cl', 'Entra a nic.cl con tu cuenta, abre tu dominio y reemplaza los “servidores de nombre (DNS)” por los dos de Cloudflare. Guarda. El cambio puede demorar unas horas.'],
-  ['Agrega dos registros en Cloudflare', 'En DNS → Registros, agrega un registro tipo A con nombre @ y dirección 192.0.2.1, con la nube naranja (Proxy) activada. Agrega otro igual con nombre www.'],
-  ['Crea la redirección', `En Reglas → Reglas de redirección, crea una regla para “Todas las solicitudes entrantes”, tipo Estática, código 301 y URL de destino: ${url}`],
-  ['Listo', 'Al abrir tu dominio .cl se abre tu página de Kiltrazo para pedir hora.'],
+  ['Entra a tu cuenta de NIC Chile', 'Ve a clientes.nic.cl (botón “Ingresar” en nic.cl) con tu usuario y clave.'],
+  ['Abre tu dominio', 'Toca el dominio que quieres usar, por ejemplo veterinarialosaromos.cl.'],
+  ['Elige “Redireccionamiento web”', 'En la sección “4 Configuración Técnica”, selecciona la opción redireccionamiento web. Ojo: si tenías servidores DNS informados, se borran.'],
+  ['Pega tu enlace de Kiltrazo', `En la dirección web escribe: ${url} y acepta las condiciones de uso.`],
+  ['Prueba y guarda', 'Toca “Probar” (debe decir “Es una URL válida”) y luego el botón verde “Actualizar datos del dominio”.'],
+  ['Listo', 'Te llega un correo de NIC confirmando el cambio. Puede tardar hasta 24 horas en funcionar. Desde ahí, al escribir tu dominio .cl se abre tu página para pedir hora.'],
 ];
 
 export function webCard(clinic) {
@@ -27,7 +28,7 @@ export function webCard(clinic) {
       <details class="ck-domain">
         <summary>¿Tienes un dominio .cl? Úsalo para tu página</summary>
         <ol class="ck-steps">${STEPS(url).map(([t, d]) => `<li><b>${t}</b><br><span class="small">${esc(d)}</span></li>`).join('')}</ol>
-        <p class="small muted">💡 Si ya tienes un sitio web, basta con poner un botón “Pedir hora” que lleve a tu página de Kiltrazo.</p>
+        <p class="small muted">⚠️ Si usas ese dominio para el correo o ya tiene un sitio web, esto los apagaría. En ese caso, mejor pon en tu sitio un botón “Pedir hora” con tu enlace de Kiltrazo.</p>
       </details>
       <button type="button" class="btn small primary" data-web-mail>✉️ Enviarme las instrucciones por correo</button>
     </div>`;
