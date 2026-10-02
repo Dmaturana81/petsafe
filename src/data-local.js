@@ -81,6 +81,19 @@ export const allPets = () => db.all('pets');
 export const savePet = (pet) => db.put('pets', pet);
 export const deletePet = (id) => db.delete('pets', id);
 
+/** El administrador elimina una mascota de cualquier usuario. */
+export async function adminDeletePet(petId) {
+  const pet = await db.get('pets', petId);
+  return pet ? removeMyPet({ id: pet.ownerId }, petId) : false;
+}
+
+/** El administrador elimina un usuario con sus mascotas. */
+export async function adminDeleteUser(userId) {
+  for (const p of await db.all('pets')) if (p.ownerId === userId) await removeMyPet({ id: userId }, p.id);
+  await db.delete('users', userId);
+  return true;
+}
+
 /** El dueño elimina su mascota: se borra su biometría y se desligan los avisos. */
 export async function removeMyPet(user, petId) {
   const pet = await db.get('pets', petId);
