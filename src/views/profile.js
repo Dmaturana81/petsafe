@@ -16,6 +16,7 @@ export default async function profile(el, _params, { user, refresh }) {
   const saved = isComplete(user);
 
   el.innerHTML = `
+    ${saved ? '' : '<a class="card finder-link" href="#/veterinarios">🔎 <span><b>¿Buscas veterinario?</b> Ve las clínicas Kiltrazo y pide hora sin crear cuenta.</span></a>'}
     ${CLOUD && !user ? `
       <div class="card">
         <h2>¿Ya tienes cuenta?</h2>
@@ -107,7 +108,10 @@ export default async function profile(el, _params, { user, refresh }) {
         </div>` : ''}
 
       <div class="card">
-        <h2>¿Necesitas ayuda?</h2>
+        <h2>Ayuda</h2>
+        <p>En el manual está todo paso a paso: registrar a tu mascota, qué hacer si se pierde, pedir hora y más.</p>
+        <a class="btn secondary" href="manuales/Manual-app-Kiltrazo.pdf" target="_blank" rel="noopener" download>📘 Descargar el manual</a>
+        <h3>¿Tienes otra duda?</h3>
         <p>Escríbele al administrador de Kiltrazo. Te responderá en Avisos 🔔.</p>
         <form class="form" id="contact">
           <label>Tu mensaje<textarea name="body" rows="3" required maxlength="1000"></textarea></label>

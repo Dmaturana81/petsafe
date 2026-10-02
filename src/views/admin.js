@@ -25,7 +25,7 @@ export default async function admin(el, _params, ctx) {
     <div class="admin-head">
       <h1>Administrador</h1>
       <div class="tabs">
-        ${[['alertas', '🚨 Alertas'], ['recon', '🎯 Reconocimiento'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['clinicas', '🏥 Clínicas'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
+        ${[['alertas', '🚨 Alertas'], ['recon', '🎯 Reconocimiento'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['clinicas', '🏥 Clínicas'], ['publicidad', '📣 Publicidad'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
           .map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}
       </div>
     </div>
@@ -40,7 +40,7 @@ export default async function admin(el, _params, ctx) {
   );
 
   const panel = el.querySelector('#panel');
-  await ({ alertas, recon, mensajes, usuarios, clinicas, casos, datos })[tab](panel, ctx);
+  await ({ alertas, recon, mensajes, usuarios, clinicas, publicidad, casos, datos })[tab](panel, ctx);
 }
 
 // Con Supabase el permiso vive en el servidor: se entra con un correo de
@@ -465,6 +465,91 @@ async function usuarios(panel, { refresh }) {
 
 // Todas las clínicas de Kiltrazo y su equipo. El administrador de Kiltrazo
 // maneja cuentas (quién administra cada clínica), no ve fichas clínicas.
+// Banners del buscador de veterinarios (…/#/veterinarios).
+async function publicidad(panel, { refresh }) {
+  const { listBanners, saveBanner, deleteBanner } = await import('../clinic/data.js');
+  const banners = await listBanners(true);
+  const today = new Date().toISOString().slice(0, 10);
+  const state = (b) => (!b.active ? 'Pausado' : b.startsOn && b.startsOn > today ? `Desde el ${b.startsOn.split('-').reverse().join('-')}`
+    : b.endsOn && b.endsOn < today ? 'Terminado' : 'Se está mostrando');
+  const form = (b = {}) => `
+    <form class="form banner-form" data-id="${esc(b.id || '')}">
+      <label>Imagen ${b.id ? '(deja vacío para mantenerla)' : ''}<input type="file" name="file" accept="image/*" ${b.id ? '' : 'required'}></label>
+      <p class="small muted">Tamaño ideal: 1200 × 300 píxeles (4 a 1). Se achica sola si es más grande.</p>
+      <label>Texto (para quien no ve la imagen)<input name="title" maxlength="120" value="${esc(b.title || '')}" placeholder="Ej.: 20% en alimento para gatos"></label>
+      <label>Enlace al tocarla (opcional)<input name="link" type="url" value="${esc(b.link || '')}" placeholder="https://"></label>
+      <div class="banner-dates">
+        <label>Desde<input type="date" name="startsOn" value="${esc(b.startsOn || '')}"></label>
+        <label>Hasta<input type="date" name="endsOn" value="${esc(b.endsOn || '')}"></label>
+        <label>Orden<input type="number" name="sort" value="${b.sort ?? 0}" min="0" max="99"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="active" ${b.active === false ? '' : 'checked'}> Activo</label>
+      <button class="btn primary small">${b.id ? 'Guardar cambios' : 'Agregar banner'}</button>
+    </form>`;
+
+  panel.innerHTML = `
+    <div class="card wide">
+      <h2>Publicidad en el buscador de veterinarios</h2>
+      <p class="small">Los banners se ven arriba de los resultados en <a href="#/veterinarios" target="_blank">el buscador</a>, marcados como “Publicidad”, uno a la vez. Si hay varios, van rotando.</p>
+      <div class="banner-admin">${banners.map((b) => `
+        <div class="banner-row" data-b="${esc(b.id)}">
+          <img src="${esc(b.image)}" alt="${esc(b.title)}">
+          <div>
+            <strong>${esc(b.title || 'Sin texto')}</strong>
+            <small>${esc(state(b))} · ${b.clicks || 0} ${b.clicks === 1 ? 'clic' : 'clics'}${b.endsOn ? ` · hasta el ${b.endsOn.split('-').reverse().join('-')}` : ''}</small>
+            ${b.link ? `<small class="muted">${esc(b.link)}</small>` : ''}
+            <span class="row-actions"><button class="link small" data-edit>Editar</button><button class="link small" data-toggle>${b.active ? 'Pausar' : 'Activar'}</button><button class="link danger small" data-del>Borrar</button></span>
+          </div>
+        </div>`).join('') || '<p class="muted">Aún no hay banners.</p>'}</div>
+    </div>
+    <div class="card"><h2>Nuevo banner</h2>${form()}</div>`;
+
+  const shrink = (file) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = Math.min(1200, img.width);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = Math.round((img.height * w) / img.width);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => reject(new Error('No pudimos leer esa imagen'));
+    img.src = URL.createObjectURL(file);
+  });
+  const bind = (f) => f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = f.querySelector('button');
+    btn.disabled = true;
+    try {
+      const d = Object.fromEntries(new FormData(f));
+      const file = f.file.files[0];
+      await saveBanner({ id: f.dataset.id || undefined, title: d.title.trim(), link: d.link.trim(), startsOn: d.startsOn, endsOn: d.endsOn,
+        sort: d.sort, active: f.active.checked, image: file ? await shrink(file) : undefined });
+      toast('Banner guardado', 'ok');
+      refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+      btn.disabled = false;
+    }
+  });
+  panel.querySelectorAll('.banner-form').forEach(bind);
+  panel.querySelectorAll('.banner-row').forEach((row) => {
+    const b = banners.find((x) => x.id === row.dataset.b);
+    row.querySelector('[data-edit]').addEventListener('click', () => {
+      row.insertAdjacentHTML('afterend', form(b));
+      bind(row.nextElementSibling);
+      row.querySelector('[data-edit]').hidden = true;
+    });
+    row.querySelector('[data-toggle]').addEventListener('click', async () => { await saveBanner({ ...b, image: undefined, active: !b.active }); refresh(); });
+    row.querySelector('[data-del]').addEventListener('click', async () => {
+      if (!confirm('¿Borrar este banner?')) return;
+      await deleteBanner(b.id);
+      refresh();
+    });
+  });
+}
+
 async function clinicas(panel, { refresh }) {
   const { allClinics, setClinicAdmin, createInvite, deleteClinic, approveClinic } = await import('../clinic/data.js');
   const { ROLES } = await import('../clinic/ui.js');

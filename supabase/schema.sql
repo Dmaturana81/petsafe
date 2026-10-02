@@ -1985,3 +1985,97 @@ begin
   return a_id;
 end $$;
 grant execute on function public.guest_request_appointment(uuid, jsonb, jsonb, text, text, timestamptz, text, text) to authenticated;
+
+-- ---------- Especialidades de cada veterinario ----------
+-- Lista fija (para poder buscar): cada veterinario marca las suyas y la
+-- clínica muestra las de todo su equipo, en el mapa y en la página pública.
+alter table public.clinic_members add column if not exists specialties text[] not null default '{}';
+alter table public.clinic_members drop constraint if exists clinic_members_specialties_check;
+alter table public.clinic_members add constraint clinic_members_specialties_check check (specialties <@ array[
+  'general', 'felinos', 'exoticos', 'dermatologia', 'cirugia', 'traumatologia', 'cardiologia',
+  'oftalmologia', 'odontologia', 'oncologia', 'comportamiento', 'imagenologia']::text[]);
+
+create or replace function public.save_specialties(p_clinic uuid, p_user uuid, p_specialties text[]) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(p_user, auth.uid()) <> auth.uid() and not is_clinic_admin(p_clinic) then raise exception 'Solo tú o quien administra la clínica'; end if;
+  update clinic_members set specialties = coalesce((select array_agg(distinct s) from unnest(p_specialties) s), '{}')
+  where clinic_id = p_clinic and user_id = coalesce(p_user, auth.uid()) and role = 'vet';
+  return found;
+end $$;
+grant execute on function public.save_specialties(uuid, uuid, text[]) to authenticated;
+
+create or replace function public.clinic_specialties(p_clinic uuid) returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(distinct s order by s), '{}') from clinic_members m, unnest(m.specialties) s
+  where m.clinic_id = p_clinic and m.role = 'vet';
+$$;
+
+-- Mapa y buscador de veterinarios: ahora con el enlace a la página de cada
+-- clínica y sus especialidades.
+drop function if exists public.nearby_clinics(double precision, double precision, double precision);
+create function public.nearby_clinics(p_lat double precision, p_lng double precision, p_km double precision default 50)
+returns table (id uuid, name text, slug text, address text, phone text, lat double precision, lng double precision,
+  emergencies boolean, home_visits boolean, only_home boolean, hours text, specialties text[], km double precision)
+language sql stable security definer set search_path = public as $$
+  select * from (
+    select y.*,
+      case when p_lat is null or p_lng is null then null else
+        6371 * 2 * asin(least(1, sqrt(power(sin(radians(y.lat - p_lat) / 2), 2)
+          + cos(radians(p_lat)) * cos(radians(y.lat)) * power(sin(radians(y.lng - p_lng) / 2), 2)))) end as km
+    from (
+      -- Solo a domicilio: el punto se redondea (~1 km) para no mostrar su casa.
+      select c.id, c.name, c.slug, c.address, c.phone,
+        case when c.only_home then round(c.lat::numeric, 2)::double precision else c.lat end as lat,
+        case when c.only_home then round(c.lng::numeric, 2)::double precision else c.lng end as lng,
+        c.emergencies, c.home_visits, c.only_home, c.hours, clinic_specialties(c.id) as specialties
+      from clinics c where c.on_map and c.approved and c.lat is not null and c.lng is not null
+    ) y
+  ) x
+  where x.km is null or x.km <= p_km
+  order by x.emergencies desc, x.km nulls last, x.name
+  limit 200;
+$$;
+grant execute on function public.nearby_clinics(double precision, double precision, double precision) to anon, authenticated;
+
+create or replace function public.public_clinic(p_slug text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', c.id, 'name', c.name, 'slug', c.slug, 'logo', c.logo, 'address', c.address, 'phone', c.phone,
+    'hours', c.hours, 'home_visits', c.home_visits, 'only_home', c.only_home, 'emergencies', c.emergencies,
+    'lat', case when c.only_home then null else c.lat end, 'lng', case when c.only_home then null else c.lng end,
+    'specialties', to_jsonb(clinic_specialties(c.id)),
+    'vets', coalesce((select jsonb_agg(jsonb_build_object('name', m.name, 'specialties', to_jsonb(m.specialties)) order by m.created_at)
+      from clinic_members m where m.clinic_id = c.id and m.role = 'vet' and m.name <> ''), '[]'::jsonb))
+  from clinics c where c.slug = lower(p_slug) and c.approved;
+$$;
+grant execute on function public.public_clinic(text) to anon, authenticated;
+
+-- ---------- Publicidad en el buscador de veterinarios ----------
+-- Banners que maneja el administrador general de Kiltrazo. Se muestran
+-- marcados como "Publicidad", solo mientras estén activos y en sus fechas.
+create table if not exists public.landing_banners (
+  id uuid primary key default gen_random_uuid(),
+  title text not null default '',
+  image text not null check (length(image) < 700000),
+  link text not null default '',
+  active boolean not null default true,
+  sort int not null default 0,
+  starts_on date,
+  ends_on date,
+  clicks int not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table public.landing_banners enable row level security;
+drop policy if exists "banners visibles" on public.landing_banners;
+create policy "banners visibles" on public.landing_banners for select using (
+  is_admin() or (active and (starts_on is null or starts_on <= current_date) and (ends_on is null or ends_on >= current_date)));
+drop policy if exists "banners admin" on public.landing_banners;
+create policy "banners admin" on public.landing_banners for all using (is_admin()) with check (is_admin());
+grant select on public.landing_banners to anon, authenticated;
+grant insert, update, delete on public.landing_banners to authenticated;
+
+create or replace function public.banner_click(p_id uuid) returns void
+language sql security definer set search_path = public as $$
+  update landing_banners set clicks = clicks + 1 where id = p_id and active;
+$$;
+grant execute on function public.banner_click(uuid) to anon, authenticated;

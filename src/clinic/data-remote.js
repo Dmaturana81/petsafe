@@ -220,6 +220,10 @@ export async function nearbyClinics(lat = null, lng = null, km = 50) {
 
 // ---------- Días de trabajo y horas libres ----------
 
+export async function saveSpecialties(clinicId, userId, specialties) {
+  return run(sb().rpc('save_specialties', { p_clinic: clinicId, p_user: userId || null, p_specialties: specialties }));
+}
+
 export async function saveSchedule(clinicId, userId, schedule) {
   return run(sb().rpc('save_schedule', { p_clinic: clinicId, p_user: userId, p_schedule: schedule }));
 }
@@ -232,4 +236,24 @@ export async function busyElsewhere(clinicId) {
 /** { configured, days: [{ day, times }] } */
 export async function availableSlots(clinicId, place, days = 14) {
   return run(sb().rpc('available_slots', { p_clinic: clinicId, p_place: place, p_days: days }));
+}
+
+// ---------- Publicidad del buscador (la maneja el administrador general) ----------
+
+export async function listBanners() {
+  return (await run(sb().from('landing_banners').select('*').order('sort').order('created_at'))).map(camel);
+}
+
+export async function saveBanner(b) {
+  const row = { title: b.title || '', link: b.link || '', active: Boolean(b.active), sort: Number(b.sort) || 0,
+    starts_on: b.startsOn || null, ends_on: b.endsOn || null, ...(b.image ? { image: b.image } : {}) };
+  return b.id ? run(sb().from('landing_banners').update(row).eq('id', b.id)) : run(sb().from('landing_banners').insert(row));
+}
+
+export async function deleteBanner(id) {
+  return run(sb().from('landing_banners').delete().eq('id', id));
+}
+
+export function bannerClick(id) {
+  return sb().rpc('banner_click', { p_id: id }).then(() => {}, () => {});
 }
