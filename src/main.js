@@ -30,6 +30,27 @@ import landing from './views/landing.js';
 
 registerSW({ immediate: true });
 
+// Si publicamos una versión nueva mientras alguien tenía Kiltrazo abierto, sus
+// archivos viejos ya no existen ("Failed to fetch dynamically imported
+// module"). Se recarga sola una vez para traer la versión nueva.
+const STALE = /dynamically imported module|Importing a module script failed|Unable to preload/i;
+function reloadIfStale(err) {
+  if (!STALE.test(String(err?.message || err))) return false;
+  try {
+    if (Date.now() - Number(sessionStorage.getItem('kiltrazo-recarga') || 0) < 30000) return false;
+    sessionStorage.setItem('kiltrazo-recarga', String(Date.now()));
+  } catch {
+    return false;
+  }
+  location.reload();
+  return true;
+}
+const oops = (err) => (STALE.test(String(err?.message))
+  ? '<div class="card"><h2>Hay una versión nueva de Kiltrazo</h2><p>Recarga la página para seguir.</p><button class="btn primary" onclick="location.reload()">Recargar</button></div>'
+  : `<div class="card"><h2>Ups…</h2><p>${esc(err.message)}</p></div>`);
+window.addEventListener('vite:preloadError', (e) => { if (reloadIfStale(e.payload)) e.preventDefault(); });
+window.addEventListener('unhandledrejection', (e) => reloadIfStale(e.reason));
+
 // Enlace corto de la página de una clínica (…/?c=nombre, el que apunta su dominio .cl).
 const shortSlug = new URLSearchParams(location.search).get('c');
 if (shortSlug && (!location.hash || location.hash === '#/')) {
@@ -134,7 +155,8 @@ async function render() {
     await view(viewEl, params, { user, refresh: render });
   } catch (err) {
     console.error(err);
-    viewEl.innerHTML = `<div class="card"><h2>Ups…</h2><p>${esc(err.message)}</p></div>`;
+    if (reloadIfStale(err)) return;
+    viewEl.innerHTML = oops(err);
   }
   await updateBadge(user);
 }
@@ -147,7 +169,8 @@ async function renderClinic(hash) {
     await clinicApp(viewEl, hash.replace(/^#\/?/, ''), { refresh: render });
   } catch (err) {
     console.error(err);
-    viewEl.innerHTML = `<div class="card"><h2>Ups…</h2><p>${esc(err.message)}</p></div>`;
+    if (reloadIfStale(err)) return;
+    viewEl.innerHTML = oops(err);
   }
 }
 
