@@ -715,7 +715,8 @@ body.finder-mode #app { max-width: 1200px; padding: 0 16px 40px; }
 .ld-hero .btn.big { font-size: 1.1rem; padding: 14px 28px; }
 .ld-alt { margin: 20px 0 0; font-size: 0.92rem; }
 .ld-qr-box { display: flex; gap: 16px; align-items: center; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; text-align: left; max-width: 480px; }
-.ld-qr img { width: 132px; height: 132px; display: block; }
+.ld-qr { flex: none; }
+.ld-qr img { width: 132px; height: 132px; max-width: none; display: block; }
 .ld-qr-box p { margin: 4px 0 8px; }
 .ld-hero-phones { position: relative; display: flex; justify-content: center; min-height: 420px; }
 .ld-phone { margin: 0; width: 200px; aspect-ratio: 9 / 18; border-radius: 30px; border: 8px solid #3b2a1e; overflow: hidden; background: #fff; box-shadow: 0 18px 40px rgba(74, 52, 40, .25); }
