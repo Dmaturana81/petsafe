@@ -60,18 +60,21 @@ export default function start(el, { session, refresh, pendingCode }) {
         <div class="card">
           <h2>Crear mi clínica</h2>
           <form class="form" id="ck-create">
-            <label>Nombre de la clínica<input name="name" required maxlength="120" placeholder="Clínica Veterinaria Los Aromos"></label>
-            <label>Dirección<input name="address" placeholder="Calle, número, comuna"></label>
+            ${kindPick()}
+            <label><span data-k="clinica">Nombre de la clínica</span><span data-k="domicilio" hidden>Nombre que verán los tutores</span>
+              <input name="name" required maxlength="120" placeholder="Clínica Veterinaria Los Aromos"></label>
+            <label><span data-k="clinica">Dirección</span><span data-k="domicilio" hidden>Comuna o zona donde atiendes</span>
+              <input name="address" placeholder="Calle, número, comuna"></label>
             <label>Teléfono<input name="phone" type="tel" placeholder="+56 2 2345 6789"></label>
             <label>Tu nombre<input name="memberName" required placeholder="Dra. Camila Rojas"></label>
-            <label>Tu rol<select name="role"><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select></label>
-            <label class="ck-check"><input type="checkbox" name="onMap" checked> Aparecer en “Clínicas cercanas” de la app, para que los tutores te encuentren en una urgencia</label>
+            <label data-k="clinica">Tu rol<select name="role"><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select></label>
+            <label class="ck-check"><input type="checkbox" name="onMap" checked> Aparecer en “Clínicas cercanas” de la app, para que los tutores te encuentren</label>
             <div class="ck-map-pick" id="ck-map-pick">
-              <p class="small muted">Marca la clínica en el mapa (toca o arrastra la huella). Aparecerá cuando Kiltrazo apruebe tu clínica.</p>
+              <p class="small muted"><span data-k="clinica">Marca la clínica en el mapa (toca o arrastra la huella).</span><span data-k="domicilio" hidden>Marca el centro de la zona donde atiendes. En la app se verá un punto aproximado, nunca tu dirección.</span> Aparecerá cuando Kiltrazo lo apruebe.</p>
               <div class="ck-map" id="ck-map"></div>
-              <button type="button" class="link small" id="ck-here">📍 Estoy en la clínica: usar mi ubicación</button>
+              <button type="button" class="link small" id="ck-here">📍 <span data-k="clinica">Estoy en la clínica: usar</span><span data-k="domicilio" hidden>Usar</span> mi ubicación</button>
             </div>
-            <label class="ck-check"><input type="checkbox" name="emergencies"> Atendemos urgencias</label>
+            <label class="ck-check" data-k="clinica"><input type="checkbox" name="emergencies"> Atendemos urgencias</label>
             <button class="btn primary">Crear clínica</button>
           </form>
         </div>
@@ -101,6 +104,7 @@ export default function start(el, { session, refresh, pendingCode }) {
       btn.disabled = false;
     }
   });
+  bindKind(el.querySelector('#ck-create'));
   // Ubicación para aparecer en "Clínicas cercanas": se pregunta al crearla.
   let point = null;
   const pick = el.querySelector('#ck-map-pick');
@@ -119,12 +123,39 @@ export default function start(el, { session, refresh, pendingCode }) {
 
   submit('#ck-create', async (d) => {
     if (d.onMap && !point) throw new Error('Marca la clínica en el mapa, o quita la opción de aparecer en Clínicas cercanas.');
+    const onlyHome = d.kind === 'domicilio';
     const c = { name: d.name.trim(), address: d.address, phone: d.phone };
-    const id = await createClinic({ ...c, memberName: d.memberName.trim(), role: d.role });
-    if (d.onMap || d.emergencies) {
-      await saveClinic({ id, ...c, onMap: Boolean(d.onMap), emergencies: Boolean(d.emergencies), lat: point?.lat ?? null, lng: point?.lng ?? null });
+    const id = await createClinic({ ...c, memberName: d.memberName.trim(), role: onlyHome ? 'vet' : d.role });
+    if (d.onMap || d.emergencies || onlyHome) {
+      await saveClinic({
+        id, ...c, onlyHome, homeVisits: onlyHome, onMap: Boolean(d.onMap), emergencies: !onlyHome && Boolean(d.emergencies),
+        lat: point?.lat ?? null, lng: point?.lng ?? null,
+      });
     }
     return id;
   });
   submit('#ck-join', (d) => joinClinic(d.code.trim().toUpperCase(), d.memberName.trim()));
+}
+
+// ¿Clínica con local o veterinario independiente que solo va a domicilio?
+// Lo que no aplica se esconde con data-k.
+export function kindPick(onlyHome = false) {
+  return `
+    <fieldset class="ck-kind">
+      <legend>¿Cómo atiendes?</legend>
+      <label><input type="radio" name="kind" value="clinica" ${onlyHome ? '' : 'checked'}><span>🏥 Tengo clínica o consulta</span></label>
+      <label><input type="radio" name="kind" value="domicilio" ${onlyHome ? 'checked' : ''}><span>🏠 Soy independiente, solo a domicilio</span></label>
+    </fieldset>`;
+}
+
+export function bindKind(form) {
+  const sync = () => {
+    const k = form.kind.value;
+    form.querySelectorAll('[data-k]').forEach((x) => { x.hidden = x.dataset.k !== k; });
+    const addr = form.address;
+    addr.placeholder = k === 'domicilio' ? 'Ej.: Ñuñoa, Providencia y La Reina' : 'Calle, número, comuna';
+    if (form.name.placeholder) form.name.placeholder = k === 'domicilio' ? 'Dra. Camila Rojas, veterinaria a domicilio' : 'Clínica Veterinaria Los Aromos';
+  };
+  form.querySelectorAll('[name="kind"]').forEach((r) => r.addEventListener('change', sync));
+  sync();
 }

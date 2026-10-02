@@ -27,18 +27,19 @@ export default async function clinicsMap(el) {
             ${c.km != null ? `<span class="clinic-km">${c.km < 1 ? 'a menos de 1 km' : `a ${String(c.km).replace('.', ',')} km`}</span>` : ''}
           </div>
           <div class="clinic-tags">
+            ${c.onlyHome ? '<span class="clinic-tag home">🏠 Veterinario a domicilio</span>' : ''}
             ${c.emergencies ? '<span class="clinic-tag urgent">Urgencias</span>' : ''}
-            ${c.homeVisits ? '<span class="clinic-tag">A domicilio</span>' : ''}
+            ${c.homeVisits && !c.onlyHome ? '<span class="clinic-tag">A domicilio</span>' : ''}
           </div>
-          ${c.address ? `<p class="small">${esc(c.address)}</p>` : ''}
+          ${c.address ? `<p class="small">${c.onlyHome ? 'Atiende en: ' : ''}${esc(c.address)}</p>` : ''}
           ${c.hours ? `<p class="small muted">🕒 ${esc(c.hours)}</p>` : ''}
           <div class="clinic-btns">
             ${c.phone ? `<a class="btn call" href="tel:${esc(c.phone)}">📞 Llamar</a>` : ''}
-            <a class="btn home" href="${go.google}" target="_blank" rel="noopener">🚗 Cómo llegar</a>
+            ${c.onlyHome ? '' : `<a class="btn home" href="${go.google}" target="_blank" rel="noopener">🚗 Cómo llegar</a>`}
           </div>
           <div class="clinic-btns">
             ${c.emergencies ? '<button class="btn urgent" data-urgent>🚨 Voy con una urgencia</button>' : ''}
-            <button class="btn secondary" data-book>📅 Pedir hora</button>
+            <button class="btn secondary" data-book>📅 ${c.onlyHome ? 'Pedir visita a domicilio' : 'Pedir hora'}</button>
           </div>
           ${pets.length ? `
           <form class="form clinic-urgent" hidden>

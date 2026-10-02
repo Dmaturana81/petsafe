@@ -3,6 +3,7 @@
 import { esc, toast, getLocation } from '../../ui.js';
 import { createInvite, removeMember, setClinicAdmin, saveClinic, saveSchedule, busyElsewhere } from '../data.js';
 import { ROLES } from '../ui.js';
+import { kindPick, bindKind } from './start.js';
 
 export default function team(el, _params, ctx) {
   const { clinic, team: people, me } = ctx;
@@ -36,20 +37,21 @@ export default function team(el, _params, ctx) {
           </div>
           <form class="card form" id="ck-clinic">
             <h2>Datos de la clínica</h2>
+            ${kindPick(clinic.onlyHome)}
             <label>Nombre<input name="name" required maxlength="120" value="${esc(clinic.name)}"></label>
-            <label>Dirección<input name="address" value="${esc(clinic.address)}"></label>
+            <label><span data-k="clinica">Dirección</span><span data-k="domicilio" hidden>Comuna o zona donde atiendes</span><input name="address" value="${esc(clinic.address)}"></label>
             <label>Teléfono<input name="phone" type="tel" value="${esc(clinic.phone)}"></label>
             <label>Horario<input name="hours" maxlength="120" value="${esc(clinic.hours || '')}" placeholder="Ej.: Lun a Vie 9 a 19, Sáb 10 a 14"></label>
-            <label class="ck-check"><input type="checkbox" name="homeVisits" ${clinic.homeVisits ? 'checked' : ''}> Hacemos visitas a domicilio (los tutores podrán pedirlas)</label>
+            <label class="ck-check" data-k="clinica"><input type="checkbox" name="homeVisits" ${clinic.homeVisits ? 'checked' : ''}> Hacemos visitas a domicilio (los tutores podrán pedirlas)</label>
             <label>Tiempo de traslado entre visitas a domicilio<select name="travelMinutes">
               ${[15, 30, 45, 60, 90].map((n) => `<option value="${n}" ${(clinic.travelMinutes ?? 30) === n ? 'selected' : ''}>${n} minutos</option>`).join('')}
             </select></label>
-            <label class="ck-check"><input type="checkbox" name="emergencies" ${clinic.emergencies ? 'checked' : ''}> Atendemos urgencias</label>
-            <label class="ck-check"><input type="checkbox" name="onMap" ${clinic.onMap ? 'checked' : ''}> Aparecer en el mapa de clínicas de Kiltrazo (los tutores ven nombre, dirección, teléfono y horario)</label>
+            <label class="ck-check" data-k="clinica"><input type="checkbox" name="emergencies" ${clinic.emergencies ? 'checked' : ''}> Atendemos urgencias</label>
+            <label class="ck-check"><input type="checkbox" name="onMap" ${clinic.onMap ? 'checked' : ''}> Aparecer en el mapa de clínicas de Kiltrazo (los tutores ven nombre, dirección o zona, teléfono y horario)</label>
             <div class="ck-map-pick">
-              <p class="small muted">Marca la clínica en el mapa (toca o arrastra la huella).</p>
+              <p class="small muted"><span data-k="clinica">Marca la clínica en el mapa (toca o arrastra la huella).</span><span data-k="domicilio" hidden>Marca el centro de la zona donde atiendes. En la app se verá un punto aproximado, nunca tu dirección.</span></p>
               <div class="ck-map" id="ck-map"></div>
-              <button type="button" class="link small" id="ck-here">📍 Estoy en la clínica: usar mi ubicación</button>
+              <button type="button" class="link small" id="ck-here">📍 <span data-k="clinica">Estoy en la clínica: usar</span><span data-k="domicilio" hidden>Usar</span> mi ubicación</button>
             </div>
             <button class="btn primary small">Guardar</button>
           </form>` : '<div class="card"><p>Solo quien administra la clínica puede invitar o quitar personas.</p></div>'}
@@ -111,14 +113,17 @@ export default function team(el, _params, ctx) {
     });
   }
 
-  el.querySelector('#ck-clinic')?.addEventListener('submit', async (e) => {
+  const clinicForm = el.querySelector('#ck-clinic');
+  if (clinicForm) bindKind(clinicForm);
+  clinicForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
+    const onlyHome = f.kind === 'domicilio';
     if (f.onMap && !point) return toast('Marca la clínica en el mapa para aparecer en él', 'bad');
     try {
       await saveClinic({
         id: clinic.id, name: f.name.trim(), address: f.address.trim(), phone: f.phone.trim(), hours: f.hours.trim(),
-        homeVisits: Boolean(f.homeVisits), emergencies: Boolean(f.emergencies), onMap: Boolean(f.onMap), travelMinutes: Number(f.travelMinutes) || 30,
+        onlyHome, homeVisits: onlyHome || Boolean(f.homeVisits), emergencies: !onlyHome && Boolean(f.emergencies), onMap: Boolean(f.onMap), travelMinutes: Number(f.travelMinutes) || 30,
         lat: point?.lat ?? null, lng: point?.lng ?? null,
       });
       toast('Datos guardados', 'ok');
@@ -144,22 +149,23 @@ async function mountSchedule(box, ctx) {
 
   const draw = () => {
     const sched = who.schedule || {};
-    const places = clinic.homeVisits ? PLACES : PLACES.slice(0, 2);
+    const places = clinic.onlyHome ? [['', 'No trabaja'], PLACES[2]] : clinic.homeVisits ? PLACES : PLACES.slice(0, 2);
     box.innerHTML = `
       <form class="card form ck-sched">
         <div class="ck-sched-head">
           <h2>Días de trabajo</h2>
           ${editable.length > 1 ? `<select name="who" class="ck-select" aria-label="Veterinario">${editable.map((m) => `<option value="${m.userId}" ${m.userId === who.userId ? 'selected' : ''}>${esc(m.name || 'Sin nombre')}${m.userId === me.userId ? ' (tú)' : ''}</option>`).join('')}</select>` : ''}
         </div>
-        <p class="small muted">Elige dónde atiende cada día. Los tutores solo podrán pedir horas libres en esos días${clinic.homeVisits ? `, y entre visitas a domicilio dejamos ${clinic.travelMinutes ?? 30} minutos de traslado` : ''}.</p>
+        <p class="small muted">${clinic.onlyHome ? 'Elige qué días atiende y en qué horario.' : 'Elige dónde atiende cada día.'} Los tutores solo podrán pedir horas libres en esos días${clinic.homeVisits ? `, y entre visitas a domicilio dejamos ${clinic.travelMinutes ?? 30} minutos de traslado` : ''}.</p>
         ${DAYS.map((name, i) => {
           const k = String(i + 1);
-          const d = sched[k] || {};
+          const d = { ...sched[k] };
+          if (clinic.onlyHome && d.place === 'clinica') d.place = 'domicilio';
           const other = elsewhere.filter((o) => o.userId === who.userId && o.dow === k);
           return `
           <div class="ck-sched-row" data-day="${k}">
             <strong>${name}</strong>
-            <span class="ck-seg">${places.map(([v, t]) => `<label><input type="radio" name="p${k}" value="${v}" ${(d.place || '') === v ? 'checked' : ''}><span>${t}</span></label>`).join('')}</span>
+            <span class="ck-seg ${places.length === 2 ? 'two' : ''}">${places.map(([v, t]) => `<label><input type="radio" name="p${k}" value="${v}" ${(d.place || '') === v ? 'checked' : ''}><span>${t}</span></label>`).join('')}</span>
             <span class="ck-sched-hours" ${d.place ? '' : 'hidden'}>
               <input type="time" name="f${k}" step="1800" value="${d.from || '09:00'}" aria-label="Desde"> a
               <input type="time" name="t${k}" step="1800" value="${d.to || '18:00'}" aria-label="Hasta">

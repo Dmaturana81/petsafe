@@ -1172,7 +1172,7 @@ begin
   end if;
   return jsonb_build_object(
     'clinics', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name, 'phone', c.phone, 'address', c.address,
-        'home_visits', c.home_visits))
+        'home_visits', c.home_visits, 'only_home', c.only_home))
       from clinics c where c.id in (select clinic_id from clinic_patients where pet_id = p_pet)), '[]'::jsonb),
     'vaccines', coalesce((select jsonb_agg(jsonb_build_object('kind', v.kind, 'name', v.name, 'applied_on', v.applied_on,
         'next_due', v.next_due, 'clinic', c.name) order by v.applied_on desc)
@@ -1827,17 +1827,56 @@ begin
 end $$;
 grant execute on function public.admin_approve_clinic(uuid, boolean) to authenticated;
 
+-- ---------- Veterinario independiente: solo a domicilio ----------
+-- Quien no tiene local: todas sus horas son a domicilio, en vez de dirección
+-- indica la comuna o zona donde atiende, y en el mapa sale un punto aproximado.
+alter table public.clinics add column if not exists only_home boolean not null default false;
+
+create or replace function public.fix_only_home() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if new.only_home then
+    new.home_visits := true;
+    new.emergencies := false;  -- no hay a dónde llegar con una urgencia
+  end if;
+  return new;
+end $$;
+drop trigger if exists fix_only_home on public.clinics;
+create trigger fix_only_home before insert or update on public.clinics
+  for each row execute function public.fix_only_home();
+
+-- Un tutor no puede pedir hora "en la clínica" a quien atiende solo a domicilio.
+create or replace function public.check_only_home() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if new.place = 'clinica' and new.requested_by is not null
+     and exists (select 1 from clinics where id = new.clinic_id and only_home) then
+    raise exception 'Este veterinario atiende solo a domicilio';
+  end if;
+  return new;
+end $$;
+drop trigger if exists check_only_home on public.clinic_appointments;
+create trigger check_only_home before insert on public.clinic_appointments
+  for each row execute function public.check_only_home();
+
 drop function if exists public.nearby_clinics(double precision, double precision, double precision);
 create function public.nearby_clinics(p_lat double precision, p_lng double precision, p_km double precision default 50)
 returns table (id uuid, name text, address text, phone text, lat double precision, lng double precision,
-  emergencies boolean, home_visits boolean, hours text, km double precision)
+  emergencies boolean, home_visits boolean, only_home boolean, hours text, km double precision)
 language sql stable security definer set search_path = public as $$
   select * from (
-    select c.id, c.name, c.address, c.phone, c.lat, c.lng, c.emergencies, c.home_visits, c.hours,
+    select y.*,
       case when p_lat is null or p_lng is null then null else
-        6371 * 2 * asin(least(1, sqrt(power(sin(radians(c.lat - p_lat) / 2), 2)
-          + cos(radians(p_lat)) * cos(radians(c.lat)) * power(sin(radians(c.lng - p_lng) / 2), 2)))) end as km
-    from clinics c where c.on_map and c.approved and c.lat is not null and c.lng is not null
+        6371 * 2 * asin(least(1, sqrt(power(sin(radians(y.lat - p_lat) / 2), 2)
+          + cos(radians(p_lat)) * cos(radians(y.lat)) * power(sin(radians(y.lng - p_lng) / 2), 2)))) end as km
+    from (
+      -- Solo a domicilio: el punto se redondea (~1 km) para no mostrar su casa.
+      select c.id, c.name, c.address, c.phone,
+        case when c.only_home then round(c.lat::numeric, 2)::double precision else c.lat end as lat,
+        case when c.only_home then round(c.lng::numeric, 2)::double precision else c.lng end as lng,
+        c.emergencies, c.home_visits, c.only_home, c.hours
+      from clinics c where c.on_map and c.approved and c.lat is not null and c.lng is not null
+    ) y
   ) x
   where x.km is null or x.km <= p_km
   order by x.emergencies desc, x.km nulls last, x.name
