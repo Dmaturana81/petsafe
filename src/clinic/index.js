@@ -93,6 +93,7 @@ export default async function clinicApp(el, path, { refresh }) {
           ${clinic.onlyHome ? '' : link('sala', '#/clinica/sala', 'Sala de espera', inRoom)}
           ${link('vacunas', '#/clinica/vacunas', 'Vacunas por vencer', due.length)}
           ${link('equipo', '#/clinica/equipo', 'Equipo')}
+          <a href="manuales/Manual-Kiltrazo-Clinica.pdf" class="ck-nav" target="_blank" rel="noopener" download>📘 Manual (PDF)</a>
           ${later('Hospitalización', 2)}${later('Documentos', 2)}${later('Inventario', 3)}${later('Caja y boletas', 4)}${later('Reportes', 5)}
         </nav>
         <div class="ck-me">

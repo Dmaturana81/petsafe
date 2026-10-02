@@ -28,7 +28,7 @@ export default async function privacy(el) {
       <p class="muted small">Vigente desde el 1 de octubre de 2026.</p>
 
       <h2>Quién es responsable</h2>
-      <p>El administrador de Kiltrazo es responsable de tus datos. Puedes escribirle desde la app en Perfil → "¿Necesitas ayuda?".</p>
+      <p>El administrador de Kiltrazo es responsable de tus datos. Puedes escribirle desde la app en Perfil → "Ayuda".</p>
 
       <h2>Qué datos pedimos</h2>
       <ul>
