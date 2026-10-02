@@ -107,6 +107,29 @@ export async function signIn(email, password) {
   }
 }
 
+// Cambio de dirección (ver move.js): la sesión de este dispositivo viaja a la
+// nueva dirección y allá se retoma.
+export async function sessionToken() {
+  const { data } = await sb().auth.getSession();
+  sb().auth.stopAutoRefresh(); // que no la renueve aquí mientras viaja
+  return data.session?.refresh_token || '';
+}
+
+export async function adoptSession(refreshToken) {
+  const { data } = await sb().auth.getSession();
+  const here = data.session?.user;
+  // Si aquí ya se entró con correo y clave, se queda esa cuenta.
+  if (here && !here.is_anonymous) return false;
+  // Lo hecho aquí como anónimo (si algo) pasa a la cuenta que llega.
+  const pass = here ? (await sb().rpc('start_transfer')).data : null;
+  const { error } = await sb().auth.refreshSession({ refresh_token: refreshToken });
+  if (error) throw new Error(error.message);
+  sessionPromise = null;
+  watching = null;
+  if (pass) await sb().rpc('finish_transfer', { p_token: pass });
+  return true;
+}
+
 /** Envía el correo para crear una clave nueva (vuelve a la app, ver finishEmailLink). */
 export async function resetPassword(email) {
   const { error } = await sb().auth.resetPasswordForEmail(email, { redirectTo: back() });
