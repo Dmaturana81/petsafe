@@ -7,6 +7,7 @@ import { esc, toast, getLocation } from '../../ui.js';
 import { createClinic, joinClinic, saveClinic, saveSpecialties, setActiveClinic } from '../data.js';
 import { specPick, readSpecs } from '../specialties.js';
 import { logoField, bindLogo } from '../logo.js';
+import { reviewFields, bindReview } from '../review.js';
 
 export default function start(el, { session, refresh, pendingCode }) {
   const intro = `
@@ -79,6 +80,7 @@ export default function start(el, { session, refresh, pendingCode }) {
               <button type="button" class="link small" id="ck-here">📍 <span data-k="clinica">Estoy en la clínica: usar</span><span data-k="domicilio" hidden>Usar</span> mi ubicación</button>
             </div>
             <label class="ck-check" data-k="clinica"><input type="checkbox" name="emergencies"> Atendemos urgencias</label>
+            ${reviewFields()}
             <button class="btn primary">Crear clínica</button>
           </form>
         </div>
@@ -115,6 +117,7 @@ export default function start(el, { session, refresh, pendingCode }) {
   create.addEventListener('change', showSpecs);
   showSpecs();
   const logo = bindLogo(el.querySelector('#ck-create'));
+  const review = bindReview(create);
   // Ubicación para aparecer en "Clínicas cercanas": se pregunta al crearla.
   let point = null;
   const pick = el.querySelector('#ck-map-pick');
@@ -133,6 +136,7 @@ export default function start(el, { session, refresh, pendingCode }) {
 
   submit('#ck-create', async (d) => {
     if (d.onMap && !point) throw new Error('Marca la clínica en el mapa, o quita la opción de aparecer en Clínicas cercanas.');
+    review.check();
     const onlyHome = d.kind === 'domicilio';
     const c = { name: d.name.trim(), address: d.address, phone: d.phone };
     const id = await createClinic({ ...c, memberName: d.memberName.trim(), role: onlyHome ? 'vet' : d.role });
@@ -144,6 +148,11 @@ export default function start(el, { session, refresh, pendingCode }) {
     }
     const specs = specWrap.hidden ? [] : readSpecs(create);
     if (specs.length) await saveSpecialties(id, null, specs);
+    // La clínica ya existe: si falla la subida, se completa después desde el aviso de revisión.
+    await review.save(id).catch((err) => {
+      console.warn('Revisión', err);
+      toast('La clínica quedó creada, pero no pudimos subir el título. Súbelo desde el aviso “en revisión”.', 'bad');
+    });
     return id;
   });
   submit('#ck-join', (d) => joinClinic(d.code.trim().toUpperCase(), d.memberName.trim()));

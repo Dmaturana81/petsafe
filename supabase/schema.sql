@@ -2079,3 +2079,32 @@ language sql security definer set search_path = public as $$
   update landing_banners set clicks = clicks + 1 where id = p_id and active;
 $$;
 grant execute on function public.banner_click(uuid) to anon, authenticated;
+
+-- ---------- Revisión de la clínica: RUT, título, patente y términos ----------
+-- Al crear la clínica se sube el RUT y el título del veterinario a cargo (y la
+-- patente si tiene local) y se aceptan los términos de uso. Los archivos van
+-- a la carpeta "<clínica>/revision/" del bucket privado "clinica": los ve el
+-- equipo de la clínica y el administrador de Kiltrazo, nadie más.
+alter table public.clinics add column if not exists rut text not null default '';
+alter table public.clinics add column if not exists docs jsonb not null default '[]'::jsonb;
+alter table public.clinics add column if not exists terms_version text;
+alter table public.clinics add column if not exists terms_at timestamptz;
+
+-- La fecha de aceptación la pone la base, no el navegador.
+create or replace function public.stamp_clinic_terms() returns trigger
+language plpgsql as $$
+begin
+  if new.terms_version is distinct from old.terms_version then
+    new.terms_at := case when new.terms_version is null then null else now() end;
+  else
+    new.terms_at := old.terms_at;
+  end if;
+  return new;
+end $$;
+drop trigger if exists stamp_clinic_terms on public.clinics;
+create trigger stamp_clinic_terms before update on public.clinics
+  for each row execute function public.stamp_clinic_terms();
+
+drop policy if exists "admin ve documentos de revisión" on storage.objects;
+create policy "admin ve documentos de revisión" on storage.objects for select using (
+  bucket_id = 'clinica' and (storage.foldername(objects.name))[2] = 'revision' and public.is_admin());

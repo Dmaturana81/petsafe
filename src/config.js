@@ -17,3 +17,8 @@ export const SUPPORT_URL = import.meta.env.VITE_SUPPORT_URL || '';
 // Versión del texto de la casilla de promociones. Si el texto cambia, sube la
 // versión: así queda registrado qué aceptó cada persona.
 export const PROMOS_VERSION = 'promos-2026-09-30';
+
+// Versión de los términos de uso de Kiltrazo Clínica (src/views/terms.js). Si
+// el texto cambia en algo importante, sube la versión: queda registrado qué
+// versión aceptó cada clínica.
+export const TERMS_VERSION = 'clinica-2026-10-02';

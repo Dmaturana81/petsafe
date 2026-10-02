@@ -127,7 +127,7 @@ export default async function landing(el) {
       </section>
 
       <footer class="fd-foot">
-        <p><a href="#/veterinarios">Buscar veterinario</a> · <a href="#/clinica">Para veterinarias</a> · <a href="#/privacidad">Privacidad</a></p>
+        <p><a href="#/veterinarios">Buscar veterinario</a> · <a href="#/clinica">Para veterinarias</a> · <a href="#/privacidad">Privacidad</a> · <a href="#/terminos">Términos para veterinarias</a></p>
         <p class="small">Kiltrazo · Hecho en Chile 🇨🇱</p>
       </footer>
     </div>`;

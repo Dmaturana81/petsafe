@@ -14,6 +14,7 @@ import patient from './views/patient.js';
 import vaccines from './views/vaccines.js';
 import team from './views/team.js';
 import requests, { homeVisits } from './views/requests.js';
+import review from './review.js';
 
 const ROUTES = [
   ['', agenda, 'agenda'],
@@ -30,6 +31,7 @@ const ROUTES = [
   ['paciente/:id/:tab', patient, 'pacientes'],
   ['vacunas', vaccines, 'vacunas'],
   ['equipo', team, 'equipo'],
+  ['revision', review, 'equipo'],
 ];
 
 function resolve(path) {
@@ -84,7 +86,8 @@ export default async function clinicApp(el, path, { refresh }) {
         ${clinics.length > 1
           ? `<select class="ck-clinic-pick" aria-label="Clínica">${clinics.map((c) => `<option value="${c.id}" ${c.id === clinic.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`
           : `<div class="ck-clinic">${esc(clinic.name)}</div>`}
-        ${clinic.approved === false ? '<p class="ck-review">🕒 Tu clínica está en revisión por Kiltrazo. Ya puedes usar la agenda y las fichas. Cuando la aprobemos, podrás aparecer en el mapa y recibir horas desde la app.</p>' : ''}
+        ${clinic.approved === false ? `<p class="ck-review">🕒 Tu clínica está en revisión por Kiltrazo. Ya puedes usar la agenda y las fichas. Cuando la aprobemos, podrás aparecer en el mapa y recibir horas desde la app.${
+          clinic.docs?.some((d) => d.kind === 'titulo') ? '' : clinic.isAdmin ? ' <a href="#/clinica/revision"><b>Sube el RUT y el título del veterinario/a</b></a> para que podamos revisarla.' : ' Falta que quien la administra suba el título del veterinario/a.'}</p>` : ''}
         <nav class="ck-navs">
           ${link('agenda', '#/clinica', 'Agenda de hoy', pending, true)}
           ${link('solicitudes', '#/clinica/solicitudes', 'Solicitudes de hora', asked.length, true)}

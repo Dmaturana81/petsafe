@@ -79,6 +79,11 @@ export async function createClinic({ name, address, phone, memberName, role }) {
   return run(sb().rpc('create_clinic', { p_name: name, p_address: address, p_phone: phone, p_member_name: memberName, p_role: role }));
 }
 
+// RUT, documentos y versión de los términos aceptados (la fecha la pone la base).
+export async function saveReview(clinicId, { rut, docs, termsVersion }) {
+  return run(sb().from('clinics').update({ rut, docs, terms_version: termsVersion }).eq('id', clinicId));
+}
+
 export async function joinClinic(code, memberName) {
   return run(sb().rpc('join_clinic', { p_code: code, p_member_name: memberName }));
 }
