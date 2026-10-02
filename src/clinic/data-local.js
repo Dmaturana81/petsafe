@@ -106,7 +106,7 @@ async function addMember(clinicId, userId, name, role, isAdmin = false) {
 
 export async function createClinic({ name, address, phone, memberName, role }) {
   const me = await app.currentUser();
-  const c = await put('clinics', { id: uuid(), name, address, phone, createdBy: me.id, createdAt: now() });
+  const c = await put('clinics', { id: uuid(), name, address, phone, approved: false, createdBy: me.id, createdAt: now() });
   await addMember(c.id, me.id, memberName, role || 'vet', true);
   return c.id;
 }
@@ -131,6 +131,16 @@ export async function setClinicAdmin(clinicId, userId, admin) {
     throw new Error('La clínica necesita al menos una persona que la administre');
   }
   return update('clinic_members', `${clinicId}:${userId}`, { isAdmin: admin });
+}
+
+export async function approveClinic(clinicId, ok = true) {
+  const c = await update('clinics', clinicId, { approved: ok });
+  if (ok) {
+    for (const m of await list('clinic_members', { clinicId })) {
+      await app.notify(m.userId, { title: `¡${c.name} fue aprobada! 🎉`, body: 'Ya puedes aparecer en "Clínicas cercanas" y recibir horas desde la app (actívalo en Equipo → Datos de la clínica).', url: '#/clinica/equipo' });
+    }
+  }
+  return true;
 }
 
 export async function deleteClinic(clinicId) {
@@ -306,7 +316,7 @@ export async function requestAppointment({ petId, clinicId, place, service, star
   if (pet?.ownerId !== me.id) throw new Error('Primero comparte tu mascota con la clínica');
   let cp = (await list('clinic_patients', { clinicId, petId }))[0];
   // Clínica del mapa: pedir hora la comparte, igual que el código.
-  if (!cp && !clinic?.onMap) throw new Error('Primero comparte tu mascota con la clínica');
+  if (!cp && !(clinic?.onMap && clinic.approved !== false)) throw new Error('Primero comparte tu mascota con la clínica');
   if (!cp) cp = await get('clinic_patients', await patientFromPet(clinicId, pet));
   if (place === 'domicilio' && !clinic.homeVisits) throw new Error('Esta clínica no hace visitas a domicilio');
   if (place === 'domicilio' && !address.trim()) throw new Error('Falta la dirección');
@@ -331,7 +341,7 @@ export async function alertEmergency(petId, clinicId, notes = '') {
   const pet = await app.getPet(petId);
   if (pet?.ownerId !== me.id) throw new Error('Mascota no encontrada');
   const clinic = await get('clinics', clinicId);
-  if (!clinic?.onMap || !clinic.emergencies) throw new Error('Esta clínica no recibe avisos de urgencia. Llámala.');
+  if (!clinic?.onMap || !clinic.emergencies || clinic.approved === false) throw new Error('Esta clínica no recibe avisos de urgencia. Llámala.');
   const cp = (await list('clinic_patients', { clinicId, petId }))[0] || await get('clinic_patients', await patientFromPet(clinicId, pet));
   const recent = (await list('clinic_appointments', { patientId: cp.id }))
     .some((a) => a.service === 'urgencia' && !['cancelada', 'atendida'].includes(a.status) && Date.now() - new Date(a.createdAt) < 2 * 3600e3);
@@ -418,7 +428,7 @@ export async function claimTransfer(code, petId) {
 export async function nearbyClinics(lat = null, lng = null, km = 50) {
   const here = lat != null && lng != null ? { lat, lng } : null;
   return (await all('clinics'))
-    .filter((c) => c.onMap && c.lat != null && c.lng != null)
+    .filter((c) => c.onMap && c.approved !== false && c.lat != null && c.lng != null)
     .map((c) => ({
       id: c.id, name: c.name, address: c.address, phone: c.phone, lat: c.lat, lng: c.lng,
       emergencies: Boolean(c.emergencies), homeVisits: Boolean(c.homeVisits), hours: c.hours || '',

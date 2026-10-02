@@ -67,7 +67,7 @@ export default function start(el, { session, refresh, pendingCode }) {
             <label>Tu rol<select name="role"><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select></label>
             <label class="ck-check"><input type="checkbox" name="onMap" checked> Aparecer en “Clínicas cercanas” de la app, para que los tutores te encuentren en una urgencia</label>
             <div class="ck-map-pick" id="ck-map-pick">
-              <p class="small muted">Marca la clínica en el mapa (toca o arrastra la huella).</p>
+              <p class="small muted">Marca la clínica en el mapa (toca o arrastra la huella). Aparecerá cuando Kiltrazo apruebe tu clínica.</p>
               <div class="ck-map" id="ck-map"></div>
               <button type="button" class="link small" id="ck-here">📍 Estoy en la clínica: usar mi ubicación</button>
             </div>

@@ -466,9 +466,12 @@ async function usuarios(panel, { refresh }) {
 // Todas las clínicas de Kiltrazo y su equipo. El administrador de Kiltrazo
 // maneja cuentas (quién administra cada clínica), no ve fichas clínicas.
 async function clinicas(panel, { refresh }) {
-  const { allClinics, setClinicAdmin, createInvite, deleteClinic } = await import('../clinic/data.js');
+  const { allClinics, setClinicAdmin, createInvite, deleteClinic, approveClinic } = await import('../clinic/data.js');
   const { ROLES } = await import('../clinic/ui.js');
-  const [clinics, users] = await Promise.all([allClinics(), listUsers()]);
+  const [all, users] = await Promise.all([allClinics(), listUsers()]);
+  // Las que esperan aprobación van primero.
+  const clinics = [...all.filter((c) => c.approved === false), ...all.filter((c) => c.approved !== false)];
+  const waiting = clinics.filter((c) => c.approved === false).length;
   const emailOf = (id) => users.find((u) => u.id === id)?.email || '';
   const link = `${location.origin}${location.pathname}#/clinica`;
 
@@ -480,15 +483,18 @@ async function clinicas(panel, { refresh }) {
       <p class="small"><strong>La clínica se quedó sin administrador:</strong> nombra a otra persona del equipo con "Hacer administrador", o crea un código para alguien nuevo.</p>
     </div>
     <div class="card wide">
-      <h2>Clínicas (${clinics.length})</h2>
+      <h2>Clínicas (${clinics.length})${waiting ? ` <span class="warn">${waiting} por aprobar</span>` : ''}</h2>
+      ${waiting ? '<p class="small muted">Revisa que sea una veterinaria real (llama al teléfono o busca la dirección) antes de aprobarla. Mientras tanto puede usar su agenda y fichas, pero no aparece en el mapa ni recibe horas desde la app.</p>' : ''}
       <div class="admin-clinics">${clinics.map((c) => {
         const admins = c.members.filter((m) => m.isAdmin).length;
         return `
-        <div class="admin-clinic" data-c="${esc(c.id)}">
+        <div class="admin-clinic ${c.approved === false ? 'pending' : ''}" data-c="${esc(c.id)}">
           <div class="admin-clinic-head">
             <strong>${esc(c.name)}</strong>
             <small>${esc([c.address, c.phone].filter(Boolean).join(' · ') || 'Sin dirección')}</small>
             ${admins ? '' : '<span class="warn">⚠️ Sin administrador</span>'}
+            ${c.approved === false ? `<span class="warn">🕒 Por aprobar</span>
+              <span class="row-actions"><button class="btn small home" data-approve>✓ Aprobar clínica</button></span>` : ''}
           </div>
           <ul class="admin-team">${c.members.map((m) => `
             <li><span><strong>${esc(m.name || 'Sin nombre')}</strong>
@@ -521,6 +527,18 @@ async function clinicas(panel, { refresh }) {
       refresh();
     } catch (err) {
       toast(err.message, 'bad');
+    }
+  }));
+  panel.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
+    const clinic = clinics.find((c) => c.id === b.closest('[data-c]').dataset.c);
+    b.disabled = true;
+    try {
+      await approveClinic(clinic.id);
+      toast(`${clinic.name} quedó aprobada. Le avisamos a su equipo.`, 'ok');
+      refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+      b.disabled = false;
     }
   }));
   panel.querySelectorAll('[data-delclinic]').forEach((b) => b.addEventListener('click', async () => {

@@ -83,6 +83,7 @@ export default async function clinicApp(el, path, { refresh }) {
         ${clinics.length > 1
           ? `<select class="ck-clinic-pick" aria-label="Clínica">${clinics.map((c) => `<option value="${c.id}" ${c.id === clinic.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`
           : `<div class="ck-clinic">${esc(clinic.name)}</div>`}
+        ${clinic.approved === false ? '<p class="ck-review">🕒 Tu clínica está en revisión por Kiltrazo. Ya puedes usar la agenda y las fichas. Cuando la aprobemos, podrás aparecer en el mapa y recibir horas desde la app.</p>' : ''}
         <nav class="ck-navs">
           ${link('agenda', '#/clinica', 'Agenda de hoy', pending, true)}
           ${link('solicitudes', '#/clinica/solicitudes', 'Solicitudes de hora', asked.length, true)}

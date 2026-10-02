@@ -1345,7 +1345,7 @@ begin
   where clinic_id = p_clinic and pet_id = p_pet and pet_id in (select id from pets where owner_id = auth.uid());
   select * into c from clinics where id = p_clinic;
   if cp.id is null then
-    if not coalesce(c.on_map, false) or not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
+    if not coalesce(c.on_map and c.approved, false) or not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
       raise exception 'Primero comparte tu mascota con la clínica';
     end if;
     perform patient_from_pet(p_clinic, p_pet);
@@ -1692,7 +1692,7 @@ declare cp clinic_patients; c clinics; a_id uuid;
 begin
   if not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then raise exception 'Mascota no encontrada'; end if;
   select * into c from clinics where id = p_clinic;
-  if not coalesce(c.on_map and c.emergencies, false) then raise exception 'Esta clínica no recibe avisos de urgencia. Llámala.'; end if;
+  if not coalesce(c.on_map and c.emergencies and c.approved, false) then raise exception 'Esta clínica no recibe avisos de urgencia. Llámala.'; end if;
   select * into cp from clinic_patients where clinic_id = p_clinic and pet_id = p_pet;
   if cp.id is null then
     perform patient_from_pet(p_clinic, p_pet);
@@ -1774,3 +1774,73 @@ begin
   return true;
 end $$;
 grant execute on function public.confirm_my_appointment(uuid) to authenticated;
+
+-- ---------- El administrador de Kiltrazo aprueba cada clínica nueva ----------
+-- Mientras no esté aprobada, la clínica puede usar su agenda y fichas, pero no
+-- aparece en "Clínicas cercanas" ni recibe horas ni urgencias desde el mapa.
+-- Las clínicas que ya existían quedan aprobadas.
+alter table public.clinics add column if not exists approved boolean not null default true;
+alter table public.clinics alter column approved set default false;
+
+-- Solo el administrador de Kiltrazo cambia "aprobada" (la clínica edita sus
+-- otros datos).
+create or replace function public.keep_clinic_approval() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.approved is distinct from old.approved and not is_admin() then new.approved := old.approved; end if;
+  return new;
+end $$;
+drop trigger if exists keep_clinic_approval on public.clinics;
+create trigger keep_clinic_approval before update on public.clinics
+  for each row execute function public.keep_clinic_approval();
+
+-- Al crear una clínica, a los administradores de Kiltrazo les llega el aviso.
+create or replace function public.tell_admins_new_clinic() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not new.approved then
+    insert into notifications (user_id, type, title, body, url)
+    select u, 'admin', 'Clínica nueva para aprobar 🏥', new.name || coalesce(' · ' || nullif(new.address, ''), ''), '#/admin'
+    from (select user_id as u from admins
+          union select p.id from profiles p join admin_emails e on e.email = lower(p.email)) x;
+  end if;
+  return new;
+end $$;
+drop trigger if exists tell_admins_new_clinic on public.clinics;
+create trigger tell_admins_new_clinic after insert on public.clinics
+  for each row execute function public.tell_admins_new_clinic();
+
+create or replace function public.admin_approve_clinic(p_clinic uuid, p_ok boolean default true) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare c clinics;
+begin
+  if not is_admin() then raise exception 'Solo administradores'; end if;
+  update clinics set approved = p_ok where id = p_clinic returning * into c;
+  if c.id is null then raise exception 'Clínica no encontrada'; end if;
+  if p_ok then
+    insert into notifications (user_id, type, title, body, url)
+    select m.user_id, 'info', '¡' || c.name || ' fue aprobada! 🎉',
+      'Ya puedes aparecer en "Clínicas cercanas" y recibir horas desde la app (actívalo en Equipo → Datos de la clínica).', '#/clinica/equipo'
+    from clinic_members m where m.clinic_id = c.id;
+  end if;
+  return true;
+end $$;
+grant execute on function public.admin_approve_clinic(uuid, boolean) to authenticated;
+
+drop function if exists public.nearby_clinics(double precision, double precision, double precision);
+create function public.nearby_clinics(p_lat double precision, p_lng double precision, p_km double precision default 50)
+returns table (id uuid, name text, address text, phone text, lat double precision, lng double precision,
+  emergencies boolean, home_visits boolean, hours text, km double precision)
+language sql stable security definer set search_path = public as $$
+  select * from (
+    select c.id, c.name, c.address, c.phone, c.lat, c.lng, c.emergencies, c.home_visits, c.hours,
+      case when p_lat is null or p_lng is null then null else
+        6371 * 2 * asin(least(1, sqrt(power(sin(radians(c.lat - p_lat) / 2), 2)
+          + cos(radians(p_lat)) * cos(radians(c.lat)) * power(sin(radians(c.lng - p_lng) / 2), 2)))) end as km
+    from clinics c where c.on_map and c.approved and c.lat is not null and c.lng is not null
+  ) x
+  where x.km is null or x.km <= p_km
+  order by x.emergencies desc, x.km nulls last, x.name
+  limit 100;
+$$;
+grant execute on function public.nearby_clinics(double precision, double precision, double precision) to anon, authenticated;
