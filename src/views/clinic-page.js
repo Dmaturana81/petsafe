@@ -6,6 +6,7 @@ import { esc, toast, go, isComplete, returnHereLater } from '../ui.js';
 import { currentUser, myPets } from '../data.js';
 import { bookForm, bindBook } from './pet-vet.js';
 import { installCard, bindInstall } from '../install.js';
+import { specTags } from '../clinic/specialties.js';
 
 const phoneLike = () => matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const wa = (phone) => {
@@ -47,6 +48,7 @@ export default async function clinicPage(el, { slug, step }) {
       </div>
       ${c.address ? `<p>${c.onlyHome ? 'Atiende en: ' : '📍 '}${esc(c.address)}</p>` : ''}
       ${c.hours ? `<p class="muted">🕒 ${esc(c.hours)}</p>` : ''}
+      ${c.specialties?.length ? `<div class="spec-tags">${specTags(c.specialties)}</div>` : ''}
       <div class="clinic-btns">
         ${c.phone ? `<a class="btn call" href="tel:${esc(c.phone)}">📞 Llamar</a>` : ''}
         ${wa(c.phone) ? `<a class="btn whatsapp" href="${wa(c.phone)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}

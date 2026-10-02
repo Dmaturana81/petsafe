@@ -11,7 +11,7 @@ export const {
   session, myClinics, members, removeMember, saveClinic, createClinic, joinClinic, createInvite, setClinicAdmin, allClinics, deleteClinic, approveClinic,
   linkPet, createPetCode, petHealth, unlinkPet, runReminders, fileUrls,
   requestAppointment, alertEmergency, cancelMyAppointment, myAppointment, confirmMyAppointment, notifyAppointment, createTransferCode, transferInfo, claimTransfer, acceptTransfer,
-  nearbyClinics, saveSchedule, busyElsewhere, availableSlots, publicClinic, guestRequestAppointment,
+  nearbyClinics, listBanners, saveBanner, deleteBanner, bannerClick, saveSpecialties, saveSchedule, busyElsewhere, availableSlots, publicClinic, guestRequestAppointment,
 } = B;
 
 // ---------- Clínica activa (por si alguien trabaja en dos) ----------

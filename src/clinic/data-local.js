@@ -6,12 +6,12 @@ import * as app from '../data-local.js';
 import { kmBetween } from '../geo.js';
 
 const TABLES = ['clinics', 'clinic_members', 'clinic_invites', 'clinic_patients', 'clinic_visits', 'clinic_vaccines',
-  'clinic_files', 'clinic_appointments', 'pet_codes', 'clinic_blobs', 'clinic_transfers'];
+  'clinic_files', 'clinic_appointments', 'pet_codes', 'clinic_blobs', 'clinic_transfers', 'landing_banners'];
 
 let dbPromise;
 function open() {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open('kiltrazo-clinica', 2);
+    const req = indexedDB.open('kiltrazo-clinica', 3);
     req.onupgradeneeded = () => {
       for (const t of TABLES) if (!req.result.objectStoreNames.contains(t)) req.result.createObjectStore(t, { keyPath: 'id' });
     };
@@ -445,6 +445,8 @@ export async function publicClinic(slug) {
     id: c.id, name: c.name, slug: c.slug, logo: c.logo || null, address: c.address, phone: c.phone, hours: c.hours || '',
     homeVisits: Boolean(c.homeVisits), onlyHome: Boolean(c.onlyHome), emergencies: Boolean(c.emergencies),
     lat: c.onlyHome ? null : c.lat ?? null, lng: c.onlyHome ? null : c.lng ?? null,
+    specialties: await clinicSpecialties(c.id),
+    vets: (await all('clinic_members')).filter((m) => m.clinicId === c.id && m.role === 'vet' && m.name).map((m) => ({ name: m.name, specialties: m.specialties || [] })),
   };
 }
 
@@ -486,18 +488,21 @@ export async function guestRequestAppointment({ clinicId, tutor, pet, place, ser
 
 export async function nearbyClinics(lat = null, lng = null, km = 50) {
   const here = lat != null && lng != null ? { lat, lng } : null;
+  const specs = {};
+  for (const c of await all('clinics')) specs[c.id] = await clinicSpecialties(c.id);
   return (await all('clinics'))
     .filter((c) => c.onMap && c.approved !== false && c.lat != null && c.lng != null)
     // Solo a domicilio: el punto se redondea (~1 km) para no mostrar su casa.
     .map((c) => (c.onlyHome ? { ...c, lat: Math.round(c.lat * 100) / 100, lng: Math.round(c.lng * 100) / 100 } : c))
     .map((c) => ({
-      id: c.id, name: c.name, address: c.address, phone: c.phone, lat: c.lat, lng: c.lng,
+      id: c.id, name: c.name, slug: c.slug, address: c.address, phone: c.phone, lat: c.lat, lng: c.lng,
       emergencies: Boolean(c.emergencies), homeVisits: Boolean(c.homeVisits), onlyHome: Boolean(c.onlyHome), hours: c.hours || '',
+      specialties: specs[c.id] || [],
       km: here ? Math.round(kmBetween(here, c) * 10) / 10 : null,
     }))
     .filter((c) => c.km == null || c.km <= km)
     .sort((a, b) => (b.emergencies - a.emergencies) || ((a.km ?? 0) - (b.km ?? 0)) || a.name.localeCompare(b.name))
-    .slice(0, 100);
+    .slice(0, 200);
 }
 
 // ---------- Días de trabajo y horas libres (mismas reglas que supabase/schema.sql) ----------
@@ -557,6 +562,19 @@ export async function availableSlots(clinicId, place, days = 14) {
   return { configured: true, days: out };
 }
 
+export async function saveSpecialties(clinicId, userId, specialties) {
+  const me = userId || (await app.currentUser())?.id;
+  const m = await get('clinic_members', `${clinicId}:${me}`);
+  if (!m || m.role !== 'vet') return false;
+  await put('clinic_members', { ...m, specialties: [...new Set(specialties)] });
+  return true;
+}
+
+async function clinicSpecialties(clinicId) {
+  const ms = (await all('clinic_members')).filter((m) => m.clinicId === clinicId && m.role === 'vet');
+  return [...new Set(ms.flatMap((m) => m.specialties || []))].sort();
+}
+
 export async function saveSchedule(clinicId, userId, schedule) {
   for (const [k, d] of Object.entries(schedule)) {
     if (hm(d.from) >= hm(d.to)) throw new Error('Revisa el horario: la hora de término debe ser después de la de inicio');
@@ -579,4 +597,27 @@ export async function busyElsewhere(clinicId) {
     for (const [dow, d] of Object.entries(m.schedule || {})) out.push({ userId: m.userId, dow, fromHm: d.from, toHm: d.to, clinic: name });
   }
   return out;
+}
+
+// ---------- Publicidad del buscador ----------
+
+/** Todos para el administrador (admin = true); si no, solo los activos y en fecha. */
+export async function listBanners(admin = false) {
+  const d = today();
+  return (await all('landing_banners'))
+    .filter((b) => admin || (b.active && (!b.startsOn || b.startsOn <= d) && (!b.endsOn || b.endsOn >= d)))
+    .sort((a, b) => (a.sort - b.sort) || a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function saveBanner(b) {
+  const old = b.id ? await get('landing_banners', b.id) : null;
+  return put('landing_banners', { clicks: 0, createdAt: now(), ...old, ...b, image: b.image || old?.image, id: b.id || uuid(),
+    active: Boolean(b.active), sort: Number(b.sort) || 0 });
+}
+
+export const deleteBanner = (id) => del('landing_banners', id);
+
+export async function bannerClick(id) {
+  const b = await get('landing_banners', id);
+  if (b) await put('landing_banners', { ...b, clicks: (b.clicks || 0) + 1 });
 }

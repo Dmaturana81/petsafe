@@ -4,7 +4,8 @@
 import { createAccount } from '../../data.js';
 import { mountEmailLogin } from '../../views/login-email.js';
 import { esc, toast, getLocation } from '../../ui.js';
-import { createClinic, joinClinic, saveClinic, setActiveClinic } from '../data.js';
+import { createClinic, joinClinic, saveClinic, saveSpecialties, setActiveClinic } from '../data.js';
+import { specPick, readSpecs } from '../specialties.js';
 import { logoField, bindLogo } from '../logo.js';
 
 export default function start(el, { session, refresh, pendingCode }) {
@@ -70,6 +71,7 @@ export default function start(el, { session, refresh, pendingCode }) {
             ${logoField()}
             <label>Tu nombre<input name="memberName" required placeholder="Dra. Camila Rojas"></label>
             <label data-k="clinica">Tu rol<select name="role"><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select></label>
+            <div data-spec-wrap>${specPick([], 'Tus especialidades')}<p class="small muted">Los tutores podrán buscarte por ellas. Las de tu equipo se agregan después en Equipo.</p></div>
             <label class="ck-check"><input type="checkbox" name="onMap" checked> Aparecer en “Clínicas cercanas” de la app, para que los tutores te encuentren</label>
             <div class="ck-map-pick" id="ck-map-pick">
               <p class="small muted"><span data-k="clinica">Marca la clínica en el mapa (toca o arrastra la huella).</span><span data-k="domicilio" hidden>Marca el centro de la zona donde atiendes. En la app se verá un punto aproximado, nunca tu dirección.</span> Aparecerá cuando Kiltrazo lo apruebe.</p>
@@ -107,6 +109,11 @@ export default function start(el, { session, refresh, pendingCode }) {
     }
   });
   bindKind(el.querySelector('#ck-create'));
+  const create = el.querySelector('#ck-create');
+  const specWrap = create.querySelector('[data-spec-wrap]');
+  const showSpecs = () => { specWrap.hidden = create.kind?.value !== 'domicilio' && create.role.value !== 'vet'; };
+  create.addEventListener('change', showSpecs);
+  showSpecs();
   const logo = bindLogo(el.querySelector('#ck-create'));
   // Ubicación para aparecer en "Clínicas cercanas": se pregunta al crearla.
   let point = null;
@@ -135,6 +142,8 @@ export default function start(el, { session, refresh, pendingCode }) {
         lat: point?.lat ?? null, lng: point?.lng ?? null,
       });
     }
+    const specs = specWrap.hidden ? [] : readSpecs(create);
+    if (specs.length) await saveSpecialties(id, null, specs);
     return id;
   });
   submit('#ck-join', (d) => joinClinic(d.code.trim().toUpperCase(), d.memberName.trim()));

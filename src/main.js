@@ -24,6 +24,7 @@ import receive, { pendingTransfer, TRANSFER_KEY } from './views/receive.js';
 import clinicsMap from './views/clinics-map.js';
 import appointment from './views/appointment.js';
 import clinicPage from './views/clinic-page.js';
+import finder from './views/finder.js';
 
 registerSW({ immediate: true });
 
@@ -51,6 +52,7 @@ const routes = [
   ['recibir/:code', receive],
   ['clinicas', clinicsMap],
   ['hora/:id', appointment],
+  ['veterinarios', finder],
   ['c/:slug', clinicPage],
   ['c/:slug/:step', clinicPage],
 ];
@@ -110,10 +112,15 @@ async function render() {
     location.hash = `#/recibir/${later.code}`;
     return;
   }
-  // La página de una clínica se ve sin la app: sin menú y sin pedir el perfil.
-  document.body.classList.toggle('web-mode', view === clinicPage);
+  // En el computador, quien llega sin perfil ve el buscador de veterinarios: la
+  // app (escanear la cara de la mascota) se usa en el celular.
+  const phone = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (!isComplete(user) && view === home && !phone) view = finder;
+  // La página de una clínica y el buscador se ven sin la app: sin menú y sin pedir el perfil.
+  document.body.classList.toggle('web-mode', view === clinicPage || view === finder);
+  document.body.classList.toggle('finder-mode', view === finder);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
-  if (!isComplete(user) && ![profile, admin, password, privacy, clinicPage].includes(view)) view = profile;
+  if (!isComplete(user) && ![profile, admin, password, privacy, clinicPage, finder].includes(view)) view = profile;
 
   const tab = hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));

@@ -4,19 +4,25 @@ import { esc, toast, getLocation } from '../ui.js';
 import { showClinics } from '../map.js';
 import { currentUser, myPets } from '../data.js';
 import { bookForm, bindBook, petPick } from './pet-vet.js';
+import { SPECIALTIES, specTags } from '../clinic/specialties.js';
 
 export default async function clinicsMap(el) {
   el.innerHTML = '<div class="card"><h1>Clínicas cercanas</h1><p class="muted">Buscando tu ubicación…</p></div>';
   const [{ nearbyClinics, directions, alertEmergency }, here, user] = await Promise.all([import('../clinic/data.js'), getLocation(), currentUser().catch(() => null)]);
   const list = await nearbyClinics(here?.lat ?? null, here?.lng ?? null, 50);
   const pets = user ? await myPets(user).catch(() => []) : [];
+  const specs = Object.keys(SPECIALTIES).filter((k) => list.some((c) => c.specialties?.includes(k)));
 
   el.innerHTML = `
     <div class="card clinics-head">
       <h1>🏥 Clínicas cercanas</h1>
       <p class="small muted">${here ? 'Las más cercanas primero, con urgencias arriba.' : 'No pudimos ver tu ubicación: te mostramos todas.'}</p>
+      ${specs.length ? `<div class="spec-filter" role="group" aria-label="Especialidad">
+        <button class="chip on" data-spec="">Todas</button>${specs.map((k) => `<button class="chip" data-spec="${k}">${SPECIALTIES[k]}</button>`).join('')}
+      </div>` : ''}
       ${list.length ? '<div class="clinics-map" id="clinics-map"></div>' : ''}
     </div>
+    <p class="card small muted" id="spec-empty" hidden>Ninguna clínica cercana tiene esa especialidad todavía.</p>
     <div class="clinics-list">
       ${list.length ? list.map((c) => {
         const go = directions(c);
@@ -31,6 +37,7 @@ export default async function clinicsMap(el) {
             ${c.emergencies ? '<span class="clinic-tag urgent">Urgencias</span>' : ''}
             ${c.homeVisits && !c.onlyHome ? '<span class="clinic-tag">A domicilio</span>' : ''}
           </div>
+          ${c.specialties?.length ? `<div class="spec-tags">${specTags(c.specialties)}</div>` : ''}
           ${c.address ? `<p class="small">${c.onlyHome ? 'Atiende en: ' : ''}${esc(c.address)}</p>` : ''}
           ${c.hours ? `<p class="small muted">🕒 ${esc(c.hours)}</p>` : ''}
           <div class="clinic-btns">
@@ -83,13 +90,29 @@ export default async function clinicsMap(el) {
     });
   });
 
-  const mapEl = el.querySelector('#clinics-map');
-  if (mapEl) {
-    showClinics(mapEl, list, here, (c) => {
+  // Mapa con las clínicas que se ven; al filtrar por especialidad se vuelve a dibujar.
+  const drawMap = (shown) => {
+    const old = el.querySelector('#clinics-map');
+    if (!old) return;
+    const mapEl = document.createElement('div');
+    mapEl.className = 'clinics-map';
+    mapEl.id = 'clinics-map';
+    old.replaceWith(mapEl);
+    showClinics(mapEl, shown, here, (c) => {
       const card = el.querySelector(`.clinic-card[data-id="${c.id}"]`);
       el.querySelectorAll('.clinic-card.on').forEach((x) => x.classList.remove('on'));
       card.classList.add('on');
       card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-  }
+  };
+  drawMap(list);
+
+  el.querySelectorAll('[data-spec]').forEach((b) => b.addEventListener('click', () => {
+    el.querySelectorAll('[data-spec]').forEach((x) => x.classList.toggle('on', x === b));
+    const k = b.dataset.spec;
+    const shown = k ? list.filter((c) => c.specialties?.includes(k)) : list;
+    el.querySelectorAll('.clinic-card').forEach((card) => { card.hidden = !shown.some((c) => c.id === card.dataset.id); });
+    el.querySelector('#spec-empty').hidden = shown.length > 0;
+    drawMap(shown);
+  }));
 }

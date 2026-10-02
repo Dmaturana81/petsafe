@@ -16,6 +16,7 @@ export default async function profile(el, _params, { user, refresh }) {
   const saved = isComplete(user);
 
   el.innerHTML = `
+    ${saved ? '' : '<a class="card finder-link" href="#/veterinarios">🔎 <span><b>¿Buscas veterinario?</b> Ve las clínicas Kiltrazo y pide hora sin crear cuenta.</span></a>'}
     ${CLOUD && !user ? `
       <div class="card">
         <h2>¿Ya tienes cuenta?</h2>

@@ -1,7 +1,8 @@
 // Equipo de la clínica: quién entra, con qué rol, y códigos para invitar.
 
 import { esc, toast, getLocation } from '../../ui.js';
-import { createInvite, removeMember, setClinicAdmin, saveClinic, saveSchedule, busyElsewhere } from '../data.js';
+import { createInvite, removeMember, setClinicAdmin, saveClinic, saveSchedule, saveSpecialties, busyElsewhere } from '../data.js';
+import { specPick, readSpecs, specTags } from '../specialties.js';
 import { ROLES } from '../ui.js';
 import { kindPick, bindKind } from './start.js';
 import { logoField, bindLogo } from '../logo.js';
@@ -20,12 +21,17 @@ export default function team(el, _params, ctx) {
         <h2>Personas</h2>
         ${people.map((m) => `
           <div class="ck-member">
-            <span><strong>${esc(m.name || 'Sin nombre')}</strong><small>${ROLES[m.role]}${m.isAdmin ? ' · administra' : ''}${m.userId === me.userId ? ' · tú' : ''}</small></span>
+            <span><strong>${esc(m.name || 'Sin nombre')}</strong><small>${ROLES[m.role]}${m.isAdmin ? ' · administra' : ''}${m.userId === me.userId ? ' · tú' : ''}</small>
+              ${m.role === 'vet' ? `<span class="spec-tags">${specTags(m.specialties) || '<small class="muted">Sin especialidades</small>'}
+                ${admin || m.userId === me.userId ? `<button class="link small" data-spec-edit="${m.userId}">${m.specialties?.length ? 'Cambiar' : 'Agregar especialidades'}</button>` : ''}</span>` : ''}</span>
             ${admin && m.userId !== me.userId ? `<span class="ck-actions">
               ${m.isAdmin ? `<button class="link small" data-adm="${m.userId}">Quitar administrador</button>`
                 : `<button class="link small" data-adm="${m.userId}" data-on="1">Hacer administrador</button>`}
               <button class="link danger small" data-rm="${m.userId}">Quitar</button></span>` : ''}
-          </div>`).join('')}
+          </div>
+          ${m.role === 'vet' && (admin || m.userId === me.userId) ? `<form class="form ck-spec-form" data-spec-form="${m.userId}" hidden>
+            ${specPick(m.specialties || [], `Especialidades de ${esc(m.name || 'este veterinario')}`)}
+            <button class="btn primary small">Guardar especialidades</button></form>` : ''}`).join('')}
         ${admin && admins < 2 && people.length > 1 ? '<p class="ck-tip small">💡 Nombra a otra persona como administradora. Así, si pierdes el acceso, la clínica sigue teniendo quien la maneje.</p>' : ''}
       </div>
       <div class="ck-stack">
@@ -92,6 +98,21 @@ export default function team(el, _params, ctx) {
     if (!confirm(on ? `¿${m.name} también administrará la clínica? Podrá invitar y quitar personas.` : `¿Quitarle a ${m.name} la administración?`)) return;
     try {
       await setClinicAdmin(clinic.id, m.userId, on);
+      ctx.refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  }));
+
+  el.querySelectorAll('[data-spec-edit]').forEach((b) => b.addEventListener('click', () => {
+    el.querySelector(`[data-spec-form="${b.dataset.specEdit}"]`).hidden = false;
+    b.hidden = true;
+  }));
+  el.querySelectorAll('[data-spec-form]').forEach((f) => f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await saveSpecialties(clinic.id, f.dataset.specForm, readSpecs(f));
+      toast('Especialidades guardadas', 'ok');
       ctx.refresh();
     } catch (err) {
       toast(err.message, 'bad');
