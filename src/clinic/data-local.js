@@ -112,6 +112,12 @@ export async function createClinic({ name, address, phone, memberName, role }) {
   return c.id;
 }
 
+export async function saveReview(clinicId, { rut, docs, termsVersion }) {
+  const c = await get('clinics', clinicId);
+  const termsAt = c.termsVersion === termsVersion ? c.termsAt : now();
+  return update('clinics', clinicId, { rut, docs, termsVersion, termsAt });
+}
+
 export async function joinClinic(code, memberName) {
   const inv = await get('clinic_invites', code.trim().toUpperCase());
   if (!inv) throw new Error('El código no existe o ya venció. Pide uno nuevo.');

@@ -786,3 +786,5 @@ body.finder-mode #app { max-width: 1200px; padding: 0 16px 40px; }
   .ld-feats span { font-size: 1.5rem; }
 }
 .ld-hero-text .ld-qr-box + .ld-alt { margin-top: 22px; }
+.admin-review { margin: 6px 0 0; line-height: 1.8; }
+.admin-review .warn { margin-top: 0; }

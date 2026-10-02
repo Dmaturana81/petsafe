@@ -313,3 +313,16 @@ body.clinic-mode #view { padding: 0; display: block; }
 .ck-sheet-card textarea { width: 100%; font: inherit; padding: 10px 12px; border-radius: 14px; border: 1.5px solid var(--line, #f1dfcc); resize: vertical; }
 .ck-sheet-card .btn { text-align: center; }
 @media (min-width: 700px) { .ck-sheet { align-items: center; } }
+
+/* Revisión de Kiltrazo: RUT, título, patente y términos */
+.ck-review-box { border: 2px solid var(--line, #f0e2d6); border-radius: 14px; padding: 12px 14px 14px; margin: 4px 0; display: grid; gap: 10px; min-width: 0; }
+.ck-review-box legend { font-weight: 700; padding: 0 6px; }
+.ck-review-box > p { margin: 0; }
+.ck-doc { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.ck-doc[hidden] { display: none; }
+.ck-doc-label { font-weight: 700; font-size: 0.9rem; flex: 1 1 100%; }
+.form .ck-doc .btn { margin: 0; }
+.ck-doc-name { overflow-wrap: anywhere; }
+.ck-doc-name.ok { color: #2e7d32; font-weight: 600; }
+.ck-review a { color: inherit; }
+.ck-review-card { max-width: 560px; }

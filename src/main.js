@@ -20,6 +20,7 @@ import inbox from './views/inbox.js';
 import admin from './views/admin.js';
 import password from './views/password.js';
 import privacy from './views/privacy.js';
+import terms from './views/terms.js';
 import receive, { pendingTransfer, TRANSFER_KEY } from './views/receive.js';
 import clinicsMap from './views/clinics-map.js';
 import appointment from './views/appointment.js';
@@ -50,6 +51,7 @@ const routes = [
   ['clave', password],
   ['guardar', saveAccount],
   ['privacidad', privacy],
+  ['terminos', terms],
   ['recibir/:code', receive],
   ['clinicas', clinicsMap],
   ['hora/:id', appointment],
@@ -120,7 +122,7 @@ async function render() {
   document.body.classList.toggle('web-mode', [clinicPage, finder, landing].includes(view));
   document.body.classList.toggle('finder-mode', view === finder || view === landing);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
-  if (!isComplete(user) && ![profile, admin, password, privacy, clinicPage, finder, landing].includes(view)) view = profile;
+  if (!isComplete(user) && ![profile, admin, password, privacy, terms, clinicPage, finder, landing].includes(view)) view = profile;
 
   const tab = hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));

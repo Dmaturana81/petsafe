@@ -551,13 +551,32 @@ async function publicidad(panel, { refresh }) {
 }
 
 async function clinicas(panel, { refresh }) {
-  const { allClinics, setClinicAdmin, createInvite, deleteClinic, approveClinic } = await import('../clinic/data.js');
+  const { allClinics, setClinicAdmin, createInvite, deleteClinic, approveClinic, fileUrls } = await import('../clinic/data.js');
+  const { rutOk } = await import('../clinic/review.js');
+  const { TERMS_VERSION } = await import('../config.js');
   const { ROLES } = await import('../clinic/ui.js');
   const [all, users] = await Promise.all([allClinics(), listUsers()]);
   // Las que esperan aprobación van primero.
   const clinics = [...all.filter((c) => c.approved === false), ...all.filter((c) => c.approved !== false)];
   const waiting = clinics.filter((c) => c.approved === false).length;
   const emailOf = (id) => users.find((u) => u.id === id)?.email || '';
+  // Enlaces temporales a los documentos que subió cada clínica para la revisión.
+  const docs = clinics.flatMap((c) => (c.docs || []).map((d) => ({ id: d.path, path: d.path })));
+  const urls = await fileUrls(docs).catch(() => ({}));
+  const DOC_NAMES = { titulo: '🎓 Título', patente: '🏪 Patente' };
+  const reviewInfo = (c) => {
+    const ds = c.docs || [];
+    if (!c.rut && !ds.length) return c.approved === false ? '<p class="small warn">Todavía no sube RUT ni título.</p>' : '';
+    return `
+      <p class="admin-review small">
+        ${c.rut ? `RUT <strong>${esc(c.rut)}</strong>${rutOk(c.rut) ? '' : ' <span class="warn">no válido</span>'}` : '<span class="warn">Sin RUT</span>'}
+        ${['titulo', 'patente'].map((k) => {
+          const d = ds.filter((x) => x.kind === k).at(-1);
+          return d ? ` · <a href="${esc(urls[d.path] || '#')}" target="_blank" rel="noopener">${DOC_NAMES[k]}</a>` : k === 'titulo' ? ' · <span class="warn">Sin título</span>' : '';
+        }).join('')}
+        · ${c.termsAt ? `Aceptó los términos el ${new Date(c.termsAt).toLocaleDateString('es-CL')}${c.termsVersion === TERMS_VERSION ? '' : ' (versión anterior)'}` : '<span class="warn">No ha aceptado los términos</span>'}
+      </p>`;
+  };
   const link = `${location.origin}${location.pathname}#/clinica`;
 
   panel.innerHTML = `
@@ -569,7 +588,7 @@ async function clinicas(panel, { refresh }) {
     </div>
     <div class="card wide">
       <h2>Clínicas (${clinics.length})${waiting ? ` <span class="warn">${waiting} por aprobar</span>` : ''}</h2>
-      ${waiting ? '<p class="small muted">Revisa que sea una veterinaria real (llama al teléfono o busca la dirección) antes de aprobarla. Mientras tanto puede usar su agenda y fichas, pero no aparece en el mapa ni recibe horas desde la app.</p>' : ''}
+      ${waiting ? '<p class="small muted">Antes de aprobar, abre el título y revisa que el nombre y el RUT calcen con quien está a cargo. Si tiene local, mira la patente. Puedes buscar al veterinario en el Colegio Médico Veterinario (colmevet.cl), aunque no todos son socios. Mientras tanto puede usar su agenda y fichas, pero no aparece en el mapa ni recibe horas desde la app.</p>' : ''}
       <div class="admin-clinics">${clinics.map((c) => {
         const admins = c.members.filter((m) => m.isAdmin).length;
         return `
@@ -581,6 +600,7 @@ async function clinicas(panel, { refresh }) {
             ${c.approved === false ? `<span class="warn">🕒 Por aprobar</span>
               <span class="row-actions"><button class="btn small home" data-approve>✓ Aprobar clínica</button></span>` : ''}
           </div>
+          ${reviewInfo(c)}
           <ul class="admin-team">${c.members.map((m) => `
             <li><span><strong>${esc(m.name || 'Sin nombre')}</strong>
               <small>${esc([ROLES[m.role], emailOf(m.userId)].filter(Boolean).join(' · '))}${m.isAdmin ? ' · <b>administra</b>' : ''}</small></span>

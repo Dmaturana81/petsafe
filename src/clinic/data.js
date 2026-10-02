@@ -11,7 +11,7 @@ export const {
   session, myClinics, members, removeMember, saveClinic, createClinic, joinClinic, createInvite, setClinicAdmin, allClinics, deleteClinic, approveClinic,
   linkPet, createPetCode, petHealth, unlinkPet, runReminders, fileUrls,
   requestAppointment, alertEmergency, cancelMyAppointment, myAppointment, confirmMyAppointment, notifyAppointment, createTransferCode, transferInfo, claimTransfer, acceptTransfer,
-  nearbyClinics, listBanners, saveBanner, deleteBanner, bannerClick, saveSpecialties, saveSchedule, busyElsewhere, availableSlots, publicClinic, guestRequestAppointment,
+  saveReview, nearbyClinics, listBanners, saveBanner, deleteBanner, bannerClick, saveSpecialties, saveSchedule, busyElsewhere, availableSlots, publicClinic, guestRequestAppointment,
 } = B;
 
 // ---------- Clínica activa (por si alguien trabaja en dos) ----------
@@ -80,6 +80,18 @@ export async function uploadFile(clinicId, patientId, file, { visitId = null, na
 export async function deleteFile(f) {
   await B.removeObject(f.path);
   await B.remove('clinic_files', f.id);
+}
+
+// ---------- Revisión de Kiltrazo (RUT, título, patente) ----------
+
+/** Sube un documento para que Kiltrazo revise la clínica. Va a la carpeta "revision". */
+export async function uploadReviewDoc(clinicId, file, kind) {
+  const blob = file.type.startsWith('image/') ? await shrink(file) : file;
+  if (blob.size > 10 * 1024 * 1024) throw new Error('El archivo pesa más de 10 MB.');
+  const safe = (file.name || kind).normalize('NFD').replace(/[^\w.-]+/g, '-').slice(-60);
+  const path = `${clinicId}/revision/${kind}-${Date.now().toString(36)}-${safe}`;
+  await B.upload(path, blob);
+  return { kind, path, name: file.name || kind, mime: blob.type, at: new Date().toISOString() };
 }
 
 async function shrink(file, max = 2000) {
