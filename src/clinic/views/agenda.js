@@ -1,8 +1,9 @@
 // Agenda del día y sala de espera.
 
 import { esc, toast, go } from '../../ui.js';
-import { listAppointments, saveAppointment, listPatients, notifyAppointment, directions, today, addDays, localDay } from '../data.js';
-import { SERVICES, STATUS, fmtTime, fmtDay } from '../ui.js';
+import { listAppointments, saveAppointment, listPatients, getPatient, notifyAppointment, directions, today, addDays, localDay } from '../data.js';
+import { SERVICES, STATUS, fmtTime, fmtDay, waLink } from '../ui.js';
+import { etaMinutes, etaText } from '../eta.js';
 
 export default async function agenda(el, { day = today() }, ctx) {
   const { clinic, team, me } = ctx;
@@ -195,12 +196,12 @@ export function bindRows(el, list, ctx, redraw) {
       if (act === 'camino') {
         Object.assign(a, await saveAppointment({ id: a.id, status: 'en_camino', ...(!a.vetId && ctx.me.role === 'vet' ? { vetId: ctx.me.userId } : {}) }));
         await tell(a.id, 'en_camino');
-        toast('Le avisamos al tutor que vas en camino 🚗', 'ok');
+        if (!(await guestNotice(a, ctx, 'camino'))) toast('Le avisamos al tutor que vas en camino 🚗', 'ok');
       }
       if (act === 'llegue') {
         Object.assign(a, await saveAppointment({ id: a.id, status: 'en_atencion', arrivedAt: new Date().toISOString() }));
         await tell(a.id, 'llego');
-        toast('Le avisamos al tutor que llegaste', 'ok');
+        if (!(await guestNotice(a, ctx, 'llegue'))) toast('Le avisamos al tutor que llegaste', 'ok');
       }
       if (act === 'llego') Object.assign(a, await saveAppointment({ id: a.id, status: 'en_sala', arrivedAt: new Date().toISOString() }));
       if (act === 'no_vino') Object.assign(a, await saveAppointment({ id: a.id, status: 'no_vino' }));
@@ -218,6 +219,49 @@ export function bindRows(el, list, ctx, redraw) {
       btn.disabled = false;
     }
   });
+}
+
+// El tutor sin la app no recibe avisos de Kiltrazo: se le escribe por WhatsApp
+// con el mensaje listo y, al ir en camino, cuánto falta para llegar.
+async function guestNotice(a, ctx, kind) {
+  const p = a.patientId ? await getPatient(a.patientId).catch(() => null) : null;
+  const wa = p && !p.tutorUser && waLink(p.tutorPhone);
+  if (!wa) return false;
+  const who = ctx.me.name ? `soy ${ctx.me.name} de ${ctx.clinic.name}` : `te escribimos de ${ctx.clinic.name}`;
+  const hi = `Hola${p.tutorName ? ` ${p.tutorName.split(' ')[0]}` : ''}, ${who}.`;
+  const msg = (eta) => (kind === 'camino'
+    ? `${hi} Voy en camino a ver a ${a.patientName} 🚗${eta ? `. Llego en ${eta}` : ''}.`
+    : `${hi} Ya llegué para ver a ${a.patientName} 🏠, estoy afuera.`);
+  const sheet = document.createElement('div');
+  sheet.className = 'ck-sheet';
+  sheet.innerHTML = `
+    <div class="card ck-sheet-card">
+      <h2>📵 ${esc(p.tutorName || 'El tutor')} no tiene la app</h2>
+      <p class="small muted">Avísale por WhatsApp. Puedes cambiar el mensaje antes de enviarlo.</p>
+      <textarea rows="4" aria-label="Mensaje">${esc(msg(''))}</textarea>
+      ${kind === 'camino' ? '<p class="small muted" data-eta>📍 Calculando cuánto falta…</p>' : ''}
+      <a class="btn whatsapp" target="_blank" rel="noopener">💬 Enviar por WhatsApp</a>
+      <button type="button" class="link small" data-close>Cerrar</button>
+    </div>`;
+  document.body.append(sheet);
+  const text = sheet.querySelector('textarea');
+  const send = sheet.querySelector('.btn.whatsapp');
+  const sync = () => { send.href = `${wa}?text=${encodeURIComponent(text.value)}`; };
+  let edited = false;
+  text.addEventListener('input', () => { edited = true; sync(); });
+  sync();
+  const close = () => sheet.remove();
+  sheet.querySelector('[data-close]').addEventListener('click', close);
+  send.addEventListener('click', () => setTimeout(close, 300));
+  if (kind === 'camino') {
+    const note = sheet.querySelector('[data-eta]');
+    etaMinutes(a).then((min) => {
+      if (min == null) return (note.textContent = 'No pudimos calcular cuánto falta. Si quieres, agrégalo al mensaje.');
+      note.textContent = `📍 Desde donde estás, llegas en ${etaText(min)} (aproximado, en auto).`;
+      if (!edited) { text.value = msg(etaText(min)); sync(); }
+    });
+  }
+  return true;
 }
 
 // Sin ficha todavía: se crea al tiro, con el nombre de la hora.
