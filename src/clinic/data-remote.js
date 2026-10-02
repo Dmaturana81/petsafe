@@ -152,6 +152,10 @@ export async function requestAppointment({ petId, clinicId, place, service, star
   }));
 }
 
+export async function alertEmergency(petId, clinicId, notes = '') {
+  return run(sb().rpc('alert_emergency', { p_pet: petId, p_clinic: clinicId, p_notes: notes }));
+}
+
 export async function cancelMyAppointment(id) {
   return run(sb().rpc('cancel_my_appointment', { p_appt: id }));
 }

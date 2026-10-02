@@ -95,8 +95,9 @@ function tomorrowAt10() {
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T10:00`;
 }
 
-function bookForm(clinics) {
+export function bookForm(clinics, pets = null) {
   return `
+    ${pets ? petPick(pets) : ''}
     ${clinics.length > 1 ? `<label>Clínica<select name="clinic">${clinics.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>`
       : `<input type="hidden" name="clinic" value="${clinics[0].id}">`}
     <fieldset class="vet-place">
@@ -114,11 +115,19 @@ function bookForm(clinics) {
       <small class="muted" data-here-ok hidden>Ubicación agregada ✓</small>
     </div>
     <label>Comentario (opcional)<textarea name="notes" rows="2" maxlength="300" placeholder="Ej: tose desde ayer"></textarea></label>
-    <p class="small muted">La clínica confirmará la hora y te avisaremos aquí.</p>
+    <p class="small muted">La clínica confirmará la hora y te avisaremos aquí.${pets ? ' Verá el nombre, tipo, raza y foto de tu mascota, y tu nombre, teléfono y correo.' : ''}</p>
     <button class="btn primary">Enviar solicitud</button>`;
 }
 
-async function bindBook(form, openBtn, clinics, pet, reload) {
+/** Elegir la mascota cuando se pide hora desde el mapa de clínicas. */
+export function petPick(pets) {
+  return pets.length > 1
+    ? `<label>Mascota<select name="pet">${pets.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>`
+    : `<input type="hidden" name="pet" value="${pets[0].id}">`;
+}
+
+/** pet = null: la mascota sale del formulario (pedir hora desde el mapa). */
+export async function bindBook(form, openBtn, clinics, pet, reload) {
   let point = null;
   const user = await currentUser().catch(() => null);
   form.address.value = user?.address || '';
@@ -190,7 +199,7 @@ async function bindBook(form, openBtn, clinics, pet, reload) {
     const place = form.place.value;
     try {
       await requestAppointment({
-        petId: pet.id, clinicId: form.clinic.value, place, service: form.service.value,
+        petId: pet ? pet.id : form.pet.value, clinicId: form.clinic.value, place, service: form.service.value,
         startsAt: new Date(slotsBox.hidden ? form.when.value : slot).toISOString(),
         address: place === 'domicilio' ? form.address.value : '',
         lat: place === 'domicilio' ? point?.lat ?? null : null, lng: place === 'domicilio' ? point?.lng ?? null : null,

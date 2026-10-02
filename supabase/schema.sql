@@ -1307,10 +1307,33 @@ $$;
 create or replace function public.service_name(s text) returns text
 language sql immutable as $$
   select case s when 'consulta' then 'Consulta' when 'control' then 'Control' when 'vacuna' then 'Vacuna'
-    when 'cirugia' then 'Cirugía' when 'peluqueria' then 'Peluquería' else 'Hora' end;
+    when 'cirugia' then 'Cirugía' when 'peluqueria' then 'Peluquería' when 'urgencia' then 'Urgencia' else 'Hora' end;
 $$;
 
--- El tutor pide una hora para su mascota en una clínica con la que la compartió.
+-- Al pedir hora en una clínica del mapa sin haberla compartido antes, la
+-- mascota queda compartida con esa clínica (la misma ficha que crea link_pet).
+create or replace function public.patient_from_pet(p_clinic uuid, p_pet uuid) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare p pets; o profiles; pid uuid;
+begin
+  select * into p from pets where id = p_pet;
+  select * into o from profiles where id = p.owner_id;
+  insert into clinic_patients (clinic_id, pet_id, name, species, breed, allergies, notes, photo,
+    tutor_name, tutor_phone, tutor_email, tutor_user)
+  values (p_clinic, p.id, p.name, p.species, p.breed, '',
+    trim(both E'\n' from concat_ws(E'\n',
+      nullif('Enfermedades (según el tutor): ' || nullif(p.diseases, ''), ''),
+      nullif('Vacunas (según el tutor): ' || nullif(p.vaccines, ''), ''))),
+    p.photo,
+    coalesce(nullif(trim(concat_ws(' ', o.first_name, o.last_name)), ''), o.name, p.owner_name),
+    coalesce(o.phone, ''), coalesce(o.email, ''), p.owner_id)
+  returning id into pid;
+  return pid;
+end $$;
+revoke execute on function public.patient_from_pet(uuid, uuid) from public, anon, authenticated;
+
+-- El tutor pide una hora para su mascota en una clínica con la que la compartió
+-- o que aparece en el mapa de Kiltrazo.
 create or replace function public.request_appointment(
   p_pet uuid, p_clinic uuid, p_place text, p_service text, p_starts_at timestamptz,
   p_address text default '', p_lat double precision default null, p_lng double precision default null, p_notes text default ''
@@ -1320,8 +1343,14 @@ declare cp clinic_patients; c clinics; a_id uuid; v_vet uuid;
 begin
   select * into cp from clinic_patients
   where clinic_id = p_clinic and pet_id = p_pet and pet_id in (select id from pets where owner_id = auth.uid());
-  if cp.id is null then raise exception 'Primero comparte tu mascota con la clínica'; end if;
   select * into c from clinics where id = p_clinic;
+  if cp.id is null then
+    if not coalesce(c.on_map, false) or not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
+      raise exception 'Primero comparte tu mascota con la clínica';
+    end if;
+    perform patient_from_pet(p_clinic, p_pet);
+    select * into cp from clinic_patients where clinic_id = p_clinic and pet_id = p_pet;
+  end if;
   if p_place not in ('clinica', 'domicilio') then raise exception 'Lugar no válido'; end if;
   if p_place = 'domicilio' and not c.home_visits then raise exception 'Esta clínica no hace visitas a domicilio'; end if;
   if p_place = 'domicilio' and coalesce(trim(p_address), '') = '' then raise exception 'Falta la dirección'; end if;
@@ -1648,3 +1677,39 @@ begin
   delete from clinics where id = p_clinic;
   return found;
 end $$;
+
+-- ---------- Pedir hora y avisar urgencias desde "Clínicas cercanas" ----------
+-- El tutor avisa que va con una urgencia a una clínica del mapa que atiende
+-- urgencias: queda en la agenda de hoy y al equipo le llega el aviso con su
+-- teléfono para llamarlo.
+alter table public.clinic_appointments drop constraint if exists clinic_appointments_service_check;
+alter table public.clinic_appointments add constraint clinic_appointments_service_check
+  check (service in ('consulta', 'control', 'vacuna', 'cirugia', 'peluqueria', 'otro', 'urgencia'));
+
+create or replace function public.alert_emergency(p_pet uuid, p_clinic uuid, p_notes text default '') returns uuid
+language plpgsql security definer set search_path = public as $$
+declare cp clinic_patients; c clinics; a_id uuid;
+begin
+  if not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then raise exception 'Mascota no encontrada'; end if;
+  select * into c from clinics where id = p_clinic;
+  if not coalesce(c.on_map and c.emergencies, false) then raise exception 'Esta clínica no recibe avisos de urgencia. Llámala.'; end if;
+  select * into cp from clinic_patients where clinic_id = p_clinic and pet_id = p_pet;
+  if cp.id is null then
+    perform patient_from_pet(p_clinic, p_pet);
+    select * into cp from clinic_patients where clinic_id = p_clinic and pet_id = p_pet;
+  end if;
+  if exists (select 1 from clinic_appointments where patient_id = cp.id and service = 'urgencia'
+             and status not in ('cancelada', 'atendida') and created_at > now() - interval '2 hours') then
+    raise exception 'Ya le avisaste a esta clínica. Si es grave, llámala.';
+  end if;
+  insert into clinic_appointments (clinic_id, patient_id, patient_name, service, starts_at, status, place, notes, requested_by)
+  values (p_clinic, cp.id, cp.name, 'urgencia', now(), 'agendada', 'clinica', left(coalesce(p_notes, ''), 300), auth.uid())
+  returning id into a_id;
+  insert into notifications (user_id, type, title, body, url)
+  select m.user_id, 'info', '🚨 Urgencia en camino',
+    cp.name || coalesce(' · ' || nullif(trim(p_notes), ''), '') || ' · ' || cp.tutor_name
+      || coalesce(' ' || nullif(cp.tutor_phone, ''), ''), '#/clinica'
+  from clinic_members m where m.clinic_id = p_clinic;
+  return a_id;
+end $$;
+grant execute on function public.alert_emergency(uuid, uuid, text) to authenticated;

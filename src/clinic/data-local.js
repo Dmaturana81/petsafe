@@ -160,7 +160,10 @@ export async function linkPet(clinicId, code) {
   const pc = await get('pet_codes', code.trim().toUpperCase());
   if (!pc) throw new Error('El código no existe o ya venció. Pide al tutor que genere otro.');
   await del('pet_codes', pc.id);
-  const pet = await app.getPet(pc.petId);
+  return patientFromPet(clinicId, await app.getPet(pc.petId));
+}
+
+async function patientFromPet(clinicId, pet) {
   const owner = (await app.listUsers()).find((u) => u.id === pet.ownerId) || {};
   const tutor = {
     tutorName: `${owner.firstName || owner.name || pet.ownerName} ${owner.lastName || ''}`.trim(),
@@ -240,7 +243,7 @@ export const removeObject = (path) => del('clinic_blobs', path);
 
 // ---------- Horas pedidas por el tutor y avisos ----------
 
-const SERVICE = { consulta: 'Consulta', control: 'Control', vacuna: 'Vacuna', cirugia: 'Cirugía', peluqueria: 'Peluquería' };
+const SERVICE = { consulta: 'Consulta', control: 'Control', vacuna: 'Vacuna', cirugia: 'Cirugía', peluqueria: 'Peluquería', urgencia: 'Urgencia' };
 const when = (iso) => {
   const d = new Date(iso);
   const z = (n) => String(n).padStart(2, '0');
@@ -254,9 +257,12 @@ async function tellClinic(clinicId, title, body, url) {
 export async function requestAppointment({ petId, clinicId, place, service, startsAt, address = '', lat = null, lng = null, notes = '' }) {
   const me = await app.currentUser();
   const pet = await app.getPet(petId);
-  const cp = (await list('clinic_patients', { clinicId, petId }))[0];
-  if (!cp || pet?.ownerId !== me.id) throw new Error('Primero comparte tu mascota con la clínica');
   const clinic = await get('clinics', clinicId);
+  if (pet?.ownerId !== me.id) throw new Error('Primero comparte tu mascota con la clínica');
+  let cp = (await list('clinic_patients', { clinicId, petId }))[0];
+  // Clínica del mapa: pedir hora la comparte, igual que el código.
+  if (!cp && !clinic?.onMap) throw new Error('Primero comparte tu mascota con la clínica');
+  if (!cp) cp = await get('clinic_patients', await patientFromPet(clinicId, pet));
   if (place === 'domicilio' && !clinic.homeVisits) throw new Error('Esta clínica no hace visitas a domicilio');
   if (place === 'domicilio' && !address.trim()) throw new Error('Falta la dirección');
   if (startsAt < now()) throw new Error('Elige una fecha futura');
@@ -272,6 +278,24 @@ export async function requestAppointment({ petId, clinicId, place, service, star
   });
   if (place === 'domicilio') await update('clinic_patients', cp.id, { tutorAddress: address.trim() });
   await tellClinic(clinicId, 'Nueva solicitud de hora 📅', `${cp.name} · ${SERVICE[service] || 'Hora'}${place === 'domicilio' ? ' a domicilio' : ''} · ${when(startsAt)}`, '#/clinica/solicitudes');
+  return a.id;
+}
+
+export async function alertEmergency(petId, clinicId, notes = '') {
+  const me = await app.currentUser();
+  const pet = await app.getPet(petId);
+  if (pet?.ownerId !== me.id) throw new Error('Mascota no encontrada');
+  const clinic = await get('clinics', clinicId);
+  if (!clinic?.onMap || !clinic.emergencies) throw new Error('Esta clínica no recibe avisos de urgencia. Llámala.');
+  const cp = (await list('clinic_patients', { clinicId, petId }))[0] || await get('clinic_patients', await patientFromPet(clinicId, pet));
+  const recent = (await list('clinic_appointments', { patientId: cp.id }))
+    .some((a) => a.service === 'urgencia' && !['cancelada', 'atendida'].includes(a.status) && Date.now() - new Date(a.createdAt) < 2 * 3600e3);
+  if (recent) throw new Error('Ya le avisaste a esta clínica. Si es grave, llámala.');
+  const a = await insert('clinic_appointments', {
+    clinicId, patientId: cp.id, patientName: cp.name, service: 'urgencia', startsAt: now(), status: 'agendada', place: 'clinica', minutes: 30,
+    notes: notes.slice(0, 300), requestedBy: me.id,
+  });
+  await tellClinic(clinicId, '🚨 Urgencia en camino', [cp.name, notes.trim(), `${cp.tutorName} ${cp.tutorPhone}`.trim()].filter(Boolean).join(' · '), '#/clinica');
   return a.id;
 }
 
