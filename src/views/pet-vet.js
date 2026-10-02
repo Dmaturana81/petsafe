@@ -5,6 +5,7 @@
 
 import { esc, toast, getLocation } from '../ui.js';
 import { currentUser } from '../data.js';
+import { track } from '../analytics.js';
 import { createPetCode, petHealth, unlinkPet, requestAppointment, cancelMyAppointment, availableSlots } from '../clinic/data.js';
 
 const SERVICES = { consulta: 'Consulta', control: 'Control', vacuna: 'Vacuna', cirugia: 'Cirugía', peluqueria: 'Peluquería', otro: 'Hora' };
@@ -218,6 +219,7 @@ export async function bindBook(form, openBtn, clinics, pet, reload, opts = {}) {
         await requestAppointment({ petId: pet ? pet.id : form.pet.value, ...req });
         toast('¡Solicitud enviada! Te avisaremos cuando la confirmen.', 'ok');
       }
+      track('pedir_hora', { lugar: place });
       reload();
     } catch (err) {
       toast(err.message, 'bad');

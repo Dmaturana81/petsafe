@@ -5,6 +5,8 @@ import { esc, isComplete } from './ui.js';
 import { unlockAudio, startAlarm, checkAlarms } from './alarm.js';
 import { refreshArea } from './nearby.js';
 import './install.js';
+import { setPage } from './seo.js';
+import { initAnalytics, pageView } from './analytics.js';
 
 import home from './views/home.js';
 import profile from './views/profile.js';
@@ -56,6 +58,10 @@ const shortSlug = new URLSearchParams(location.search).get('c');
 if (shortSlug && (!location.hash || location.hash === '#/')) {
   history.replaceState(null, '', `${location.pathname}#/c/${encodeURIComponent(shortSlug)}`);
 }
+
+// …/veterinarios/ (página propia para Google, la crea seo.config.js): abre
+// el buscador de veterinarios.
+const START = /\/veterinarios\/?$/.test(location.pathname) ? '#/veterinarios' : '#/';
 
 const routes = [
   ['', home],
@@ -120,7 +126,7 @@ async function render() {
     enablePush().catch((err) => console.warn('Push no disponible', err));
     refreshArea(user).catch((err) => console.warn('Zona no actualizada', err));
   }
-  const hash = location.hash || '#/';
+  const hash = location.hash || START;
   // Kiltrazo Clínica (para veterinarias): se carga aparte, con su propio menú.
   const clinic = /^#\/clinica(\/|$)/.test(hash);
   document.body.classList.toggle('clinic-mode', clinic);
@@ -151,6 +157,8 @@ async function render() {
   viewEl.innerHTML = '';
   viewEl.className = 'view';
   window.scrollTo(0, 0);
+  // Título y datos para Google por defecto; las páginas públicas ponen los suyos.
+  setPage();
   try {
     await view(viewEl, params, { user, refresh: render });
   } catch (err) {
@@ -158,6 +166,7 @@ async function render() {
     if (reloadIfStale(err)) return;
     viewEl.innerHTML = oops(err);
   }
+  pageView(hash);
   await updateBadge(user);
 }
 
@@ -186,6 +195,7 @@ async function updateBadge(user) {
   badge.textContent = unread;
 }
 
+initAnalytics();
 window.addEventListener('hashchange', render);
 // Las pantallas avisan cuando cambian datos que afectan el contador de avisos.
 window.addEventListener('petsafe:changed', () => updateBadge());

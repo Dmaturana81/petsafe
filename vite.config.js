@@ -1,11 +1,13 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { seo } from './seo.config.js';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // Rutas relativas: funciona en GitHub Pages o en cualquier subcarpeta.
   base: './',
   build: { chunkSizeWarningLimit: 2000 },
   plugins: [
+    seo(loadEnv(mode, process.cwd(), 'VITE_')),
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',
@@ -33,4 +35,4 @@ export default defineConfig({
       devOptions: { enabled: false },
     }),
   ],
-});
+}));

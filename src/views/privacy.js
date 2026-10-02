@@ -1,5 +1,6 @@
 import { SUPPORT_URL } from '../config.js';
 import { esc } from '../ui.js';
+import { analyticsOn, cookieChoice, setCookieChoice } from '../analytics.js';
 
 // Casilla de ofertas: aparte, opcional y siempre desmarcada al comienzo
 // (Ley 21.719: consentimiento expreso, informado y específico). Si cambia el
@@ -56,6 +57,13 @@ export default async function privacy(el) {
         <li>Los datos se guardan en Supabase, un servicio de base de datos en la nube que Kiltrazo usa para funcionar.</li>
       </ul>
 
+      <h2>Cookies y estadísticas</h2>
+      ${analyticsOn ? `
+      <p>Solo si aceptas en el aviso de cookies, Kiltrazo usa Google Analytics y el píxel de Meta (Facebook e Instagram). Sirven para saber cuántas personas usan la app, qué pantallas visitan y si llegaron por un anuncio nuestro. Ellos reciben datos técnicos de tu navegador y el nombre de la pantalla que ves, nunca tus datos, los de tu mascota, sus fotos ni las fichas de la veterinaria.</p>
+      <p>Es opcional y no cambia nada en la app. Ahora: <b data-cookie-now>${cookieChoice() === 'si' ? 'aceptadas' : 'rechazadas'}</b>.</p>
+      <button type="button" class="btn small secondary" data-cookies>${cookieChoice() === 'si' ? 'Dejar de usarlas' : 'Aceptarlas'}</button>`
+      : '<p>Kiltrazo no usa cookies de publicidad ni de estadísticas. Solo guarda en tu navegador lo necesario para que la app funcione (tu sesión y tus preferencias).</p>'}
+
       <h2>Tus derechos</h2>
       <p>Puedes pedir acceso a tus datos, corregirlos, borrarlos, oponerte a su uso para ofertas y pedir una copia. Tus datos y mascotas los puedes editar o eliminar en tu perfil. Para lo demás, escríbele al administrador desde la app.</p>
 
@@ -66,4 +74,8 @@ export default async function privacy(el) {
       <p>Si esta política cambia, lo avisaremos en la app. Para usar tus datos en algo nuevo te pediremos permiso otra vez.</p>
     </div>
     ${SUPPORT_URL ? supportCard() : ''}`;
+  el.querySelector('[data-cookies]')?.addEventListener('click', () => {
+    setCookieChoice(cookieChoice() !== 'si');
+    privacy(el);
+  });
 }
