@@ -304,3 +304,12 @@ body.clinic-mode #view { padding: 0; display: block; }
 .ck-steps { margin: 6px 0; padding-left: 20px; display: grid; gap: 8px; }
 .ck-web .btn.primary { margin-top: 6px; }
 .ck-guest { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff4d6; border-radius: 12px; padding: 8px 12px; margin: 0; }
+
+/* Aviso por WhatsApp al tutor sin la app (voy en camino / llegué). */
+.ck-sheet { position: fixed; inset: 0; z-index: 50; background: rgba(40, 25, 15, .35); display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
+.ck-sheet-card { width: 100%; max-width: 440px; display: grid; gap: 10px; margin: 0; }
+.ck-sheet-card h2 { margin: 0; font-size: 1.1rem; }
+.ck-sheet-card p { margin: 0; }
+.ck-sheet-card textarea { width: 100%; font: inherit; padding: 10px 12px; border-radius: 14px; border: 1.5px solid var(--line, #f1dfcc); resize: vertical; }
+.ck-sheet-card .btn { text-align: center; }
+@media (min-width: 700px) { .ck-sheet { align-items: center; } }
