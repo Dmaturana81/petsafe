@@ -91,6 +91,10 @@ export async function setClinicAdmin(clinicId, userId, admin) {
   return run(sb().rpc('set_clinic_admin', { p_clinic: clinicId, p_user: userId, p_admin: admin }));
 }
 
+export async function deleteClinic(clinicId) {
+  return run(sb().rpc('admin_delete_clinic', { p_clinic: clinicId }));
+}
+
 // Todas las clínicas con su equipo (solo lo ve el administrador de Kiltrazo).
 export async function allClinics() {
   const rows = await run(sb().from('clinics').select('*, members:clinic_members(*)').order('name'));

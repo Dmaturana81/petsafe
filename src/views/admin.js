@@ -21,6 +21,7 @@ export default async function admin(el, _params, ctx) {
 
   const tab = sessionStorage.getItem('petsafe-admin-tab') || 'alertas';
   el.innerHTML = `
+    <div class="admin-page">
     <div class="admin-head">
       <h1>Administrador</h1>
       <div class="tabs">
@@ -28,7 +29,8 @@ export default async function admin(el, _params, ctx) {
           .map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}
       </div>
     </div>
-    <div id="panel"></div>`;
+    <div id="panel"></div>
+    </div>`;
 
   el.querySelectorAll('.tab').forEach((b) =>
     b.addEventListener('click', () => {
@@ -382,7 +384,7 @@ async function usuarios(panel, { refresh }) {
     </li>`;
 
   panel.innerHTML = `
-    <div class="card">
+    <div class="card wide">
       <h2>Usuarios (${users.length}) · Mascotas (${pets.length})</h2>
       <input class="search" type="search" id="uq" placeholder="🔍 Buscar usuario: nombre, teléfono o correo" autocomplete="off">
       <ul class="user-list">${sorted.map((u) => {
@@ -464,7 +466,7 @@ async function usuarios(panel, { refresh }) {
 // Todas las clínicas de Kiltrazo y su equipo. El administrador de Kiltrazo
 // maneja cuentas (quién administra cada clínica), no ve fichas clínicas.
 async function clinicas(panel, { refresh }) {
-  const { allClinics, setClinicAdmin, createInvite } = await import('../clinic/data.js');
+  const { allClinics, setClinicAdmin, createInvite, deleteClinic } = await import('../clinic/data.js');
   const { ROLES } = await import('../clinic/ui.js');
   const [clinics, users] = await Promise.all([allClinics(), listUsers()]);
   const emailOf = (id) => users.find((u) => u.id === id)?.email || '';
@@ -477,9 +479,9 @@ async function clinicas(panel, { refresh }) {
       <p class="small"><strong>Perdió también el correo:</strong> quien administra su clínica lo quita del equipo y lo invita de nuevo. Las fichas son de la clínica, no se pierde nada.</p>
       <p class="small"><strong>La clínica se quedó sin administrador:</strong> nombra a otra persona del equipo con "Hacer administrador", o crea un código para alguien nuevo.</p>
     </div>
-    <div class="card">
+    <div class="card wide">
       <h2>Clínicas (${clinics.length})</h2>
-      ${clinics.map((c) => {
+      <div class="admin-clinics">${clinics.map((c) => {
         const admins = c.members.filter((m) => m.isAdmin).length;
         return `
         <div class="admin-clinic" data-c="${esc(c.id)}">
@@ -503,8 +505,9 @@ async function clinicas(panel, { refresh }) {
             <p class="invite-code" data-code hidden></p>
             <p class="muted small">La persona entra a ${esc(link)}, crea su cuenta, toca "Me invitaron" y escribe el código. Queda como administradora. Sirve una vez y dura 7 días.</p>
           </details>
+          <button type="button" class="link danger small admin-del" data-delclinic>Eliminar clínica</button>
         </div>`;
-      }).join('') || '<p class="muted">Todavía no hay clínicas.</p>'}
+      }).join('') || '<p class="muted">Todavía no hay clínicas.</p>'}</div>
     </div>`;
 
   panel.querySelectorAll('[data-adm]').forEach((b) => b.addEventListener('click', async () => {
@@ -515,6 +518,19 @@ async function clinicas(panel, { refresh }) {
     try {
       await setClinicAdmin(clinic.id, m.userId, on);
       toast(on ? `${m.name} ahora administra ${clinic.name}` : 'Listo', 'ok');
+      refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  }));
+  panel.querySelectorAll('[data-delclinic]').forEach((b) => b.addEventListener('click', async () => {
+    const clinic = clinics.find((c) => c.id === b.closest('[data-c]').dataset.c);
+    const typed = prompt(`Se borrará "${clinic.name}" con todo su equipo, pacientes, horas y fichas. No se puede deshacer.\n\nPara confirmar, escribe el nombre de la clínica:`);
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== clinic.name.trim().toLowerCase()) return toast('El nombre no coincide. No se borró nada.', 'bad');
+    try {
+      await deleteClinic(clinic.id);
+      toast(`${clinic.name} fue eliminada`, 'ok');
       refresh();
     } catch (err) {
       toast(err.message, 'bad');

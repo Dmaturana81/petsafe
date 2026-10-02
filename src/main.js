@@ -87,6 +87,8 @@ async function render() {
   document.body.classList.toggle('clinic-mode', clinic);
   if (clinic) return renderClinic(hash);
   let { view, params } = resolve(hash);
+  // En el computador el administrador usa todo el ancho de la pantalla.
+  document.body.classList.toggle('admin-mode', view === admin);
   // Ficha enviada por la veterinaria a alguien sin perfil: se retoma al terminarlo.
   if (view === receive && !isComplete(user)) {
     try { localStorage.setItem(TRANSFER_KEY, JSON.stringify({ code: params.code, waiting: true })); } catch { /* sin almacenamiento */ }

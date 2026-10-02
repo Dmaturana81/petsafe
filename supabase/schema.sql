@@ -1638,3 +1638,13 @@ begin
   end if;
   return move_user_data(p_from, p_to);
 end $$;
+
+-- El administrador de Kiltrazo elimina una clínica con todo su equipo,
+-- pacientes, horas y fichas (las tablas de la clínica se borran en cascada).
+create or replace function public.admin_delete_clinic(p_clinic uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Solo administradores'; end if;
+  delete from clinics where id = p_clinic;
+  return found;
+end $$;
