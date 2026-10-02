@@ -1,12 +1,15 @@
 // Mapa de clínicas Kiltrazo cercanas, para una urgencia: llamar o ir al tiro.
 
-import { esc, getLocation } from '../ui.js';
+import { esc, toast, getLocation } from '../ui.js';
 import { showClinics } from '../map.js';
+import { currentUser, myPets } from '../data.js';
+import { bookForm, bindBook, petPick } from './pet-vet.js';
 
 export default async function clinicsMap(el) {
   el.innerHTML = '<div class="card"><h1>Clínicas cercanas</h1><p class="muted">Buscando tu ubicación…</p></div>';
-  const [{ nearbyClinics, directions }, here] = await Promise.all([import('../clinic/data.js'), getLocation()]);
-  let list = await nearbyClinics(here?.lat ?? null, here?.lng ?? null, 50);
+  const [{ nearbyClinics, directions, alertEmergency }, here, user] = await Promise.all([import('../clinic/data.js'), getLocation(), currentUser().catch(() => null)]);
+  const list = await nearbyClinics(here?.lat ?? null, here?.lng ?? null, 50);
+  const pets = user ? await myPets(user).catch(() => []) : [];
 
   el.innerHTML = `
     <div class="card clinics-head">
@@ -33,9 +36,51 @@ export default async function clinicsMap(el) {
             ${c.phone ? `<a class="btn call" href="tel:${esc(c.phone)}">📞 Llamar</a>` : ''}
             <a class="btn home" href="${go.google}" target="_blank" rel="noopener">🚗 Cómo llegar</a>
           </div>
+          <div class="clinic-btns">
+            ${c.emergencies ? '<button class="btn urgent" data-urgent>🚨 Voy con una urgencia</button>' : ''}
+            <button class="btn secondary" data-book>📅 Pedir hora</button>
+          </div>
+          ${pets.length ? `
+          <form class="form clinic-urgent" hidden>
+            ${petPick(pets)}
+            <label>¿Qué le pasa? (opcional)<input name="notes" maxlength="300" placeholder="Ej: lo atropellaron, comió veneno"></label>
+            <p class="small muted">Le avisamos a la clínica que vas en camino, con tu nombre y teléfono para que te llamen.</p>
+            <button class="btn urgent">Avisar que voy</button>
+          </form>
+          <form class="form vet-book" hidden>${bookForm([c], pets)}</form>` : ''}
         </div>`;
       }).join('') : `<div class="card"><p>Aún no hay clínicas Kiltrazo en el mapa${here ? ' cerca de ti' : ''}. Si es una urgencia, llama a la veterinaria más cercana que conozcas.</p></div>`}
     </div>`;
+
+  el.querySelectorAll('.clinic-card').forEach((card) => {
+    const c = list.find((x) => x.id === card.dataset.id);
+    const urgentBtn = card.querySelector('[data-urgent]');
+    const bookBtn = card.querySelector('[data-book]');
+    if (!pets.length) {
+      const need = () => toast('Primero registra a tu mascota en Kiltrazo', 'bad');
+      urgentBtn?.addEventListener('click', need);
+      bookBtn.addEventListener('click', need);
+      return;
+    }
+    const book = card.querySelector('.vet-book');
+    const done = (msg) => { book.outerHTML = `<p class="clinic-done">✓ ${msg}</p>`; bookBtn.hidden = true; };
+    bindBook(book, bookBtn, [c], null, () => done('Solicitud enviada. La verás en Perfil → Mis mascotas → Mi veterinaria.'));
+    const urgent = card.querySelector('.clinic-urgent');
+    if (!urgentBtn) return;
+    urgentBtn.addEventListener('click', () => { urgent.hidden = false; urgentBtn.hidden = true; });
+    urgent.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = urgent.querySelector('button');
+      btn.disabled = true;
+      try {
+        await alertEmergency(urgent.pet.value, c.id, urgent.notes.value);
+        urgent.outerHTML = `<p class="clinic-done">✓ Le avisamos a ${esc(c.name)} que vas en camino.${c.phone ? ' Si puedes, llámalos.' : ''}</p>`;
+      } catch (err) {
+        toast(err.message, 'bad');
+        btn.disabled = false;
+      }
+    });
+  });
 
   const mapEl = el.querySelector('#clinics-map');
   if (mapEl) {
