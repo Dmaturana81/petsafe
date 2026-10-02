@@ -136,6 +136,6 @@ export default async function landing(el) {
   const qr = el.querySelector('[data-qr]');
   if (qr) {
     const QR = (await import('qrcode')).default;
-    qr.innerHTML = `<img alt="QR para abrir Kiltrazo en el celular" src="${await QR.toDataURL(appUrl, { margin: 1, width: 200, color: { dark: '#4a3428' } })}">`;
+    qr.innerHTML = `<img alt="QR para abrir Kiltrazo en el celular" src="${await QR.toDataURL(appUrl, { margin: 1, width: 264, color: { dark: '#4a3428' } })}">`;
   }
 }
