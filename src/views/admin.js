@@ -464,7 +464,7 @@ async function usuarios(panel, { refresh }) {
 // Todas las clínicas de Kiltrazo y su equipo. El administrador de Kiltrazo
 // maneja cuentas (quién administra cada clínica), no ve fichas clínicas.
 async function clinicas(panel, { refresh }) {
-  const { allClinics, setClinicAdmin, createInvite } = await import('../clinic/data.js');
+  const { allClinics, setClinicAdmin, createInvite, deleteClinic } = await import('../clinic/data.js');
   const { ROLES } = await import('../clinic/ui.js');
   const [clinics, users] = await Promise.all([allClinics(), listUsers()]);
   const emailOf = (id) => users.find((u) => u.id === id)?.email || '';
@@ -503,6 +503,7 @@ async function clinicas(panel, { refresh }) {
             <p class="invite-code" data-code hidden></p>
             <p class="muted small">La persona entra a ${esc(link)}, crea su cuenta, toca "Me invitaron" y escribe el código. Queda como administradora. Sirve una vez y dura 7 días.</p>
           </details>
+          <button type="button" class="link danger small admin-del" data-delclinic>Eliminar clínica</button>
         </div>`;
       }).join('') || '<p class="muted">Todavía no hay clínicas.</p>'}
     </div>`;
@@ -515,6 +516,19 @@ async function clinicas(panel, { refresh }) {
     try {
       await setClinicAdmin(clinic.id, m.userId, on);
       toast(on ? `${m.name} ahora administra ${clinic.name}` : 'Listo', 'ok');
+      refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  }));
+  panel.querySelectorAll('[data-delclinic]').forEach((b) => b.addEventListener('click', async () => {
+    const clinic = clinics.find((c) => c.id === b.closest('[data-c]').dataset.c);
+    const typed = prompt(`Se borrará "${clinic.name}" con todo su equipo, pacientes, horas y fichas. No se puede deshacer.\n\nPara confirmar, escribe el nombre de la clínica:`);
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== clinic.name.trim().toLowerCase()) return toast('El nombre no coincide. No se borró nada.', 'bad');
+    try {
+      await deleteClinic(clinic.id);
+      toast(`${clinic.name} fue eliminada`, 'ok');
       refresh();
     } catch (err) {
       toast(err.message, 'bad');

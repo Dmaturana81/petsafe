@@ -133,6 +133,14 @@ export async function setClinicAdmin(clinicId, userId, admin) {
   return update('clinic_members', `${clinicId}:${userId}`, { isAdmin: admin });
 }
 
+export async function deleteClinic(clinicId) {
+  for (const t of TABLES.filter((x) => x !== 'clinics' && x !== 'clinic_blobs')) {
+    for (const r of await all(t)) if (r.clinicId === clinicId) await del(t, r.id);
+  }
+  await del('clinics', clinicId);
+  return true;
+}
+
 export async function allClinics() {
   const team = await all('clinic_members');
   return (await all('clinics')).sort((a, b) => a.name.localeCompare(b.name, 'es'))

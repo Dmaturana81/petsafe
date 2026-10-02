@@ -551,3 +551,4 @@ details[open] > summary { display: none; }
 .save-account .save-icon { font-size: 3rem; line-height: 1; margin-bottom: 4px; }
 .save-account .form { text-align: left; }
 .save-account .btn.ghost { width: 100%; margin-top: 8px; }
+.admin-clinic .admin-del { justify-self: start; padding-left: 0; padding-right: 0; }
