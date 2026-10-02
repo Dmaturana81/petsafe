@@ -25,6 +25,7 @@ import clinicsMap from './views/clinics-map.js';
 import appointment from './views/appointment.js';
 import clinicPage from './views/clinic-page.js';
 import finder from './views/finder.js';
+import landing from './views/landing.js';
 
 registerSW({ immediate: true });
 
@@ -53,6 +54,7 @@ const routes = [
   ['clinicas', clinicsMap],
   ['hora/:id', appointment],
   ['veterinarios', finder],
+  ['kiltrazo', landing],
   ['c/:slug', clinicPage],
   ['c/:slug/:step', clinicPage],
 ];
@@ -112,15 +114,13 @@ async function render() {
     location.hash = `#/recibir/${later.code}`;
     return;
   }
-  // En el computador, quien llega sin perfil ve el buscador de veterinarios: la
-  // app (escanear la cara de la mascota) se usa en el celular.
-  const phone = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  if (!isComplete(user) && view === home && !phone) view = finder;
-  // La página de una clínica y el buscador se ven sin la app: sin menú y sin pedir el perfil.
-  document.body.classList.toggle('web-mode', view === clinicPage || view === finder);
-  document.body.classList.toggle('finder-mode', view === finder);
+  // Quien llega por primera vez, sin perfil, ve la presentación de Kiltrazo.
+  if (!isComplete(user) && view === home) view = landing;
+  // Estas páginas se ven sin la app: sin menú y sin pedir el perfil.
+  document.body.classList.toggle('web-mode', [clinicPage, finder, landing].includes(view));
+  document.body.classList.toggle('finder-mode', view === finder || view === landing);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
-  if (!isComplete(user) && ![profile, admin, password, privacy, clinicPage, finder].includes(view)) view = profile;
+  if (!isComplete(user) && ![profile, admin, password, privacy, clinicPage, finder, landing].includes(view)) view = profile;
 
   const tab = hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));

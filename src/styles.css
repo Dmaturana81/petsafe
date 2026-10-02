@@ -704,3 +704,84 @@ body.finder-mode #app { max-width: 1200px; padding: 0 16px 40px; }
 .fd-top nav .btn { white-space: nowrap; }
 .fd-ads { max-width: 860px; }
 @media (max-width: 600px) { .fd-top nav a:not(.btn) { display: none; } .fd-hero h1 { font-size: 1.5rem; } }
+
+/* Presentación de la app (#/kiltrazo) */
+.ld-link { background: none; border: 0; padding: 0; font: inherit; color: var(--muted); cursor: pointer; }
+.ld-hero { display: grid; gap: 24px; padding: 20px 0 8px; }
+.ld-hero-text { text-align: center; }
+.ld-pill { display: inline-block; background: var(--peach); color: var(--coral-dark); font-weight: 800; font-size: 0.8rem; border-radius: 999px; padding: 4px 12px; }
+.ld-hero h1 { font-size: 1.85rem; line-height: 1.15; margin: 12px 0 10px; }
+.ld-hero-text > p { color: var(--muted); font-size: 1.05rem; margin: 0 auto 18px; max-width: 520px; }
+.ld-hero .btn.big { font-size: 1.1rem; padding: 14px 28px; }
+.ld-alt { margin: 20px 0 0; font-size: 0.92rem; }
+.ld-qr-box { display: flex; gap: 16px; align-items: center; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; text-align: left; max-width: 480px; }
+.ld-qr img { width: 132px; height: 132px; display: block; }
+.ld-qr-box p { margin: 4px 0 8px; }
+.ld-hero-phones { position: relative; display: flex; justify-content: center; min-height: 420px; }
+.ld-phone { margin: 0; width: 200px; aspect-ratio: 9 / 18; border-radius: 30px; border: 8px solid #3b2a1e; overflow: hidden; background: #fff; box-shadow: 0 18px 40px rgba(74, 52, 40, .25); }
+.ld-phone img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+.ld-hero-phones .back { position: absolute; transform: translateX(-70px) rotate(-6deg) scale(.9); opacity: .95; }
+.ld-hero-phones .front { position: relative; transform: translateX(60px) rotate(3deg); }
+.ld-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 12px 10px; margin-top: 18px; text-align: center; }
+.ld-stats b { display: block; font-size: 1.7rem; color: var(--coral); }
+.ld-stats span { font-size: 0.8rem; color: var(--muted); line-height: 1.3; display: block; }
+.ld-cite { grid-column: 1 / -1; font-size: 0.72rem; color: var(--muted); margin: 6px 0 0; }
+.ld-sec { margin-top: 36px; }
+.ld-sec > h2 { text-align: center; font-size: 1.45rem; margin: 0 0 16px; }
+.ld-steps, .ld-feats { display: grid; gap: 12px; }
+.ld-steps .card, .ld-feats .card { margin: 0; }
+.ld-steps h3, .ld-feats h3 { margin: 6px 0; font-size: 1.05rem; }
+.ld-steps p, .ld-feats p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+.ld-num { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--coral); color: #fff; font-weight: 800; }
+.ld-feats span { font-size: 1.8rem; }
+.ld-split { display: grid; gap: 20px; justify-items: center; }
+.ld-split > div h2 { font-size: 1.45rem; margin: 0 0 8px; }
+.ld-split > div > p { color: var(--muted); }
+.ld-install { text-align: center; }
+.ld-install > h2 { margin-top: 0; }
+.ld-install > p { color: var(--muted); max-width: 560px; margin: 0 auto 14px; }
+.ld-os { display: grid; gap: 12px; text-align: left; margin-bottom: 14px; }
+.ld-os > div { background: var(--cream); border-radius: 16px; padding: 12px 16px; }
+.ld-os h3 { margin: 0 0 4px; }
+.ld-os ol { margin: 0; padding-left: 20px; }
+.ld details.card { margin: 0 0 10px; padding: 14px 18px; }
+.ld summary { font-weight: 800; cursor: pointer; }
+.ld details p { margin: 8px 0 0; color: var(--muted); }
+.ld-vets { display: grid; gap: 12px; justify-items: center; text-align: center; margin-top: 36px; background: #eef3fb; }
+.ld-vets h2 { margin: 0 0 6px; font-size: 1.25rem; }
+.ld-vets p { margin: 0; color: var(--muted); }
+@media (min-width: 900px) {
+  .ld-hero { grid-template-columns: 1.1fr 1fr; align-items: center; padding: 40px 0 20px; }
+  .ld-hero-text { text-align: left; }
+  .ld-hero h1 { font-size: 3rem; }
+  .ld-hero-text > p { margin-left: 0; font-size: 1.15rem; }
+  .ld-hero-phones { min-height: 520px; }
+  .ld-phone { width: 240px; }
+  .ld-stats { padding: 24px; }
+  .ld-stats b { font-size: 2.4rem; }
+  .ld-stats span { font-size: 0.92rem; }
+  .ld-steps { grid-template-columns: repeat(3, 1fr); }
+  .ld-feats { grid-template-columns: repeat(4, 1fr); }
+  .ld-split { grid-template-columns: 1.2fr 1fr; align-items: center; padding: 0 40px; }
+  .ld-os { grid-template-columns: 1fr 1fr; max-width: 640px; margin: 0 auto 14px; }
+  .ld details.card { max-width: 760px; margin: 0 auto 10px; }
+  .ld-vets { grid-template-columns: 1fr auto; text-align: left; justify-items: start; align-items: center; padding: 28px; }
+}
+@media (max-width: 600px) {
+  .ld-hero-phones { min-height: 360px; }
+  .ld-phone { width: 170px; }
+  .ld-hero-phones .back { transform: translateX(-55px) rotate(-6deg) scale(.9); }
+  .ld-hero-phones .front { transform: translateX(45px) rotate(3deg); }
+  .ld .fd-top nav .ld-link { display: none; }
+}
+.ld-group { text-align: center; color: var(--coral-dark); font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; margin: 22px 0 10px; }
+@media (min-width: 900px) { .ld-feats { grid-template-columns: repeat(3, 1fr); } }
+.ld-what p { text-align: center; color: var(--muted); font-size: 1.08rem; max-width: 720px; margin: 0 auto; }
+@media (max-width: 600px) {
+  .ld-feats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ld-feats .card { padding: 14px; }
+  .ld-feats h3 { font-size: 0.95rem; }
+  .ld-feats p { font-size: 0.85rem; }
+  .ld-feats span { font-size: 1.5rem; }
+}
+.ld-hero-text .ld-qr-box + .ld-alt { margin-top: 22px; }
