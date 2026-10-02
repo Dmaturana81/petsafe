@@ -10,7 +10,7 @@ const B = CLOUD ? remote : local;
 export const {
   session, myClinics, members, removeMember, saveClinic, createClinic, joinClinic, createInvite, setClinicAdmin, allClinics, deleteClinic,
   linkPet, createPetCode, petHealth, unlinkPet, runReminders, fileUrls,
-  requestAppointment, alertEmergency, cancelMyAppointment, notifyAppointment, createTransferCode, transferInfo, claimTransfer, acceptTransfer,
+  requestAppointment, alertEmergency, cancelMyAppointment, myAppointment, confirmMyAppointment, notifyAppointment, createTransferCode, transferInfo, claimTransfer, acceptTransfer,
   nearbyClinics, saveSchedule, busyElsewhere, availableSlots,
 } = B;
 

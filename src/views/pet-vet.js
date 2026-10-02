@@ -32,7 +32,7 @@ export async function mountPetVet(box, pet) {
     ${health.appointments.length ? `<h3>Próximas horas</h3><ul class="vet-list">${health.appointments.map((a) => `
       <li><strong>${new Date(a.startsAt).toLocaleString('es-CL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</strong>
       <small>${SERVICES[a.service] || 'Hora'}${a.place === 'domicilio' ? ' a domicilio 🏠' : ''} · ${esc(a.clinic)}</small>
-      <span class="vet-appt-foot"><span class="vet-status ${STATUS[a.status]?.[1] || ''}">${STATUS[a.status]?.[0] || ''}</span>
+      <span class="vet-appt-foot"><span class="vet-status ${STATUS[a.status]?.[1] || ''}">${STATUS[a.status]?.[0] || ''}${a.confirmedAt ? ' · confirmaste ✓' : ''}</span>
       ${['solicitada', 'agendada'].includes(a.status) ? `<button class="link small" data-cancel="${a.id}">cancelar</button>` : ''}</span></li>`).join('')}</ul>` : ''}
     ${health.clinics.length ? `<button class="btn small primary" data-book>📅 Pedir hora</button>
       <form class="form vet-book" hidden>${bookForm(health.clinics)}</form>` : ''}

@@ -21,6 +21,7 @@ import password from './views/password.js';
 import privacy from './views/privacy.js';
 import receive, { pendingTransfer, TRANSFER_KEY } from './views/receive.js';
 import clinicsMap from './views/clinics-map.js';
+import appointment from './views/appointment.js';
 
 registerSW({ immediate: true });
 
@@ -41,6 +42,7 @@ const routes = [
   ['privacidad', privacy],
   ['recibir/:code', receive],
   ['clinicas', clinicsMap],
+  ['hora/:id', appointment],
 ];
 
 function resolve(hash) {

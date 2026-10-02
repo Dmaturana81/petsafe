@@ -121,7 +121,17 @@ export async function unlinkPet(petId, clinicId) {
 }
 
 export async function runReminders() {
+  await run(sb().rpc('send_appointment_reminders')).catch((err) => console.warn('Avisos de horas', err));
   return run(sb().rpc('send_vaccine_reminders'));
+}
+
+export async function myAppointment(id) {
+  const r = await run(sb().rpc('my_appointment', { p_appt: id }));
+  return r && camel(r);
+}
+
+export async function confirmMyAppointment(id) {
+  return run(sb().rpc('confirm_my_appointment', { p_appt: id }));
 }
 
 // ---------- Archivos (bucket privado "clinica") ----------

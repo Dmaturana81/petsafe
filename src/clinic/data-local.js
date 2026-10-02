@@ -197,11 +197,12 @@ export async function petHealth(petId) {
     appointments: (await all('clinic_appointments'))
       .filter((a) => ids.has(a.patientId) && ['solicitada', 'agendada', 'en_camino'].includes(a.status) && a.startsAt >= new Date(Date.now() - 3 * 3600000).toISOString())
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-      .map((a) => ({ id: a.id, startsAt: a.startsAt, service: a.service, status: a.status, place: a.place || 'clinica', address: a.address || '', clinic: name(a.clinicId) })),
+      .map((a) => ({ id: a.id, startsAt: a.startsAt, service: a.service, status: a.status, place: a.place || 'clinica', address: a.address || '', clinic: name(a.clinicId), confirmedAt: a.confirmedAt || null })),
   };
 }
 
 export async function runReminders() {
+  await sendAppointmentReminders();
   const limit = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const vaccines = await all('clinic_vaccines');
   let n = 0;
@@ -220,6 +221,50 @@ export async function runReminders() {
     n++;
   }
   return n;
+}
+
+/** Aviso al tutor 1 hora antes de su hora (una vez por hora). */
+async function sendAppointmentReminders() {
+  const from = new Date(Date.now() + 5 * 60000).toISOString();
+  const to = new Date(Date.now() + 65 * 60000).toISOString();
+  for (const a of await all('clinic_appointments')) {
+    if (a.remindedAt || a.status !== 'agendada' || a.service === 'urgencia' || a.startsAt < from || a.startsAt > to) continue;
+    const p = await get('clinic_patients', a.patientId);
+    if (!p?.tutorUser) continue;
+    const clinic = await get('clinics', a.clinicId);
+    await update('clinic_appointments', a.id, { remindedAt: now() });
+    const t = new Date(a.startsAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
+    await app.notify(p.tutorUser, {
+      title: `⏰ ${a.patientName} tiene hora hoy a las ${t}`,
+      body: `${SERVICE[a.service] || 'Hora'}${a.place === 'domicilio' ? ' a domicilio' : ` en ${clinic?.name}`}. Toca para confirmar que vas.`,
+      url: `#/hora/${a.id}`,
+    });
+  }
+}
+
+async function myOwnAppointment(id) {
+  const a = await get('clinic_appointments', id);
+  const cp = a && await get('clinic_patients', a.patientId);
+  const pet = cp?.petId && await app.getPet(cp.petId);
+  if (!pet || pet.ownerId !== (await app.currentUser()).id) return null;
+  return { a, cp };
+}
+
+export async function myAppointment(id) {
+  const r = await myOwnAppointment(id);
+  if (!r) return null;
+  const c = await get('clinics', r.a.clinicId);
+  return {
+    id, startsAt: r.a.startsAt, service: r.a.service, status: r.a.status, place: r.a.place || 'clinica', address: r.a.address || '',
+    confirmedAt: r.a.confirmedAt || null, pet: r.cp.name, clinic: c.name, clinicPhone: c.phone, clinicAddress: c.address, lat: c.lat, lng: c.lng,
+  };
+}
+
+export async function confirmMyAppointment(id) {
+  const r = await myOwnAppointment(id);
+  if (!r || !['agendada', 'en_camino'].includes(r.a.status)) throw new Error('Hora no encontrada');
+  await update('clinic_appointments', id, { confirmedAt: now() });
+  return true;
 }
 
 // ---------- Archivos ----------
