@@ -231,6 +231,14 @@ export async function removeMyPet(_user, petId) {
   return true;
 }
 
+// El administrador elimina una mascota (las reglas RLS lo permiten).
+export const adminDeletePet = (petId) => removeMyPet(null, petId);
+
+// El administrador elimina la cuenta de un usuario con sus mascotas.
+export async function adminDeleteUser(userId) {
+  return run(sb().rpc('admin_delete_user', { p_user: userId }));
+}
+
 export async function reportLost(pet, point = null) {
   const r = await run(sb().rpc('report_lost', { p_pet: pet.id, p_lat: point?.lat ?? null, p_lng: point?.lng ?? null }));
   return { match: r.id ? { id: r.id } : null, suggestions: rows(r.suggestions), notified: r.notified };

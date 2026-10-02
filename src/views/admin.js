@@ -1,5 +1,5 @@
 import {
-  allPets, savePet, allFound, saveFound, deleteFound, listUsers, moveUserPets, notify, notifyAll,
+  allPets, savePet, allFound, saveFound, deleteFound, listUsers, moveUserPets, adminDeleteUser, adminDeletePet, notify, notifyAll,
   latestSuccesses, deleteSuccess, commentsFor, deleteComment, addSuccess, markRecovered,
   trainingPhotos, CLOUD, isAdmin, claimAdmin, adminExists, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
 } from '../data.js';
@@ -381,6 +381,7 @@ async function usuarios(panel, { refresh }) {
         <small>Enfermedades: ${esc(p.diseases || 'No informó')}</small>
         <small>Vacunas: ${esc(p.vaccines || 'No informó')}</small>
         <small>Registrada ${timeAgo(p.createdAt)}</small></span>
+      <button type="button" class="link danger small" data-delpet="${esc(p.id)}">Eliminar</button>
     </li>`;
 
   panel.innerHTML = `
@@ -402,6 +403,7 @@ async function usuarios(panel, { refresh }) {
               <button type="button" class="btn small" data-msg="${esc(u.id)}">Enviar mensaje</button>
               ${own.length ? `<button type="button" class="btn small ghost" data-move="${esc(u.id)}">Pasar mascotas a otra cuenta</button>` : ''}
             </span>
+            <button type="button" class="link danger small" data-deluser="${esc(u.id)}">Eliminar usuario</button>
             <div class="move-box" hidden>
               <p class="small">¿Perdió su celular y no tenía clave? Pídele que abra Kiltrazo en el celular nuevo y escriba su nombre en Perfil. Llámalo a este teléfono para confirmar que es la persona y busca aquí su cuenta nueva.</p>
               <input class="search" type="search" placeholder="🔍 Buscar la cuenta nueva" autocomplete="off">
@@ -431,6 +433,39 @@ async function usuarios(panel, { refresh }) {
       li.hidden = !!q && !t.includes(q) && !(qd.length >= 3 && t.replace(/\D/g, '').includes(qd));
     });
   });
+  // Borrar no se puede deshacer: se confirma escribiendo el nombre.
+  const confirmName = (name, what) => {
+    const typed = prompt(`${what} No se puede deshacer.\n\nPara confirmar, escribe: ${name}`);
+    if (typed == null) return false;
+    if (typed.trim().toLowerCase() !== name.trim().toLowerCase()) {
+      toast('El nombre no coincide. No se borró nada.', 'bad');
+      return false;
+    }
+    return true;
+  };
+  panel.querySelectorAll('[data-deluser]').forEach((b) => b.addEventListener('click', async () => {
+    const u = users.find((x) => x.id === b.dataset.deluser);
+    const n = petsOf(u.id).length;
+    if (!confirmName(fullName(u), `Se borrará la cuenta de ${fullName(u)}${n ? ` y sus ${n === 1 ? 'mascota' : `${n} mascotas`}` : ''}.`)) return;
+    try {
+      await adminDeleteUser(u.id);
+      toast(`${fullName(u)} fue eliminado`, 'ok');
+      refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  }));
+  panel.querySelectorAll('[data-delpet]').forEach((b) => b.addEventListener('click', async () => {
+    const p = pets.find((x) => x.id === b.dataset.delpet);
+    if (!confirmName(p.name || 'Sin nombre', `Se borrará a ${p.name || 'esta mascota'} con su biometría y fotos.`)) return;
+    try {
+      await adminDeletePet(p.id);
+      toast(`${p.name} fue eliminada`, 'ok');
+      refresh();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  }));
   panel.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', () => {
     const from = users.find((u) => u.id === b.dataset.move);
     const box = b.closest('.user-detail').querySelector('.move-box');

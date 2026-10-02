@@ -1679,6 +1679,21 @@ begin
   return found;
 end $$;
 
+-- El administrador de Kiltrazo elimina la cuenta de un usuario: se borran su
+-- perfil, sus mascotas y sus avisos (en cascada desde auth.users). Nunca a un
+-- administrador ni a sí mismo.
+create or replace function public.admin_delete_user(p_user uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Solo administradores'; end if;
+  if p_user = auth.uid() or exists (select 1 from admins where user_id = p_user)
+     or exists (select 1 from auth.users u join admin_emails e on e.email = lower(u.email) where u.id = p_user) then
+    raise exception 'No se puede eliminar a un administrador de Kiltrazo';
+  end if;
+  delete from auth.users where id = p_user;
+  return found;
+end $$;
+
 -- ---------- Pedir hora y avisar urgencias desde "Clínicas cercanas" ----------
 -- El tutor avisa que va con una urgencia a una clínica del mapa que atiende
 -- urgencias: queda en la agenda de hoy y al equipo le llega el aviso con su
