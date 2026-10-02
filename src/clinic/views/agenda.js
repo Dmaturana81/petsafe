@@ -161,7 +161,7 @@ export function apptRow(a, team, order = 0) {
         <small>${SERVICES[a.service] || ''}${vet ? ` · ${esc(vet.name)}` : ''}${a.notes ? ` · ${esc(a.notes)}` : ''}${waited != null ? ` · esperando hace ${waited} min` : ''}</small>
         ${home ? `<small class="ck-home">🏠 ${esc(a.address || 'A domicilio')}${route ? ` · <a href="${route.google}" target="_blank" rel="noopener">Cómo llegar</a>` : ''}</small>` : ''}
       </span>
-      <span class="ck-pill ${a.status}">${STATUS[a.status]}</span>
+      <span class="ck-pill ${a.status}">${STATUS[a.status]}${a.confirmedAt && ['agendada', 'en_camino'].includes(a.status) ? ' · confirmó ✓' : ''}</span>
       <span class="ck-row-actions">${actions}</span>
     </div>`;
 }

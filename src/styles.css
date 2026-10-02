@@ -575,3 +575,10 @@ details[open] > summary { display: none; }
 .clinic-card .form { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .clinic-done { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: #e6f4ea; color: #2f6b3c; font-weight: 600; }
 .clinic-btns:has(> .btn[hidden]) > .btn { grid-column: 1 / -1; }
+.appt-card { text-align: center; }
+.appt-when { margin: 0; color: var(--muted); }
+.appt-time { margin: 0; font-size: 3rem; font-weight: 800; color: var(--orange); line-height: 1.1; }
+.appt-card h1 { margin: 6px 0; font-size: 1.3rem; }
+.appt-btns { display: grid; gap: 8px; margin: 16px 0 10px; }
+.appt-state { margin: 16px 0 10px; padding: 10px 12px; border-radius: 12px; background: #f6efe9; font-weight: 600; }
+.appt-state.ok { background: #e6f4ea; color: #2f6b3c; }

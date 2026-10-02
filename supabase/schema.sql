@@ -1179,7 +1179,7 @@ begin
       from clinic_vaccines v join clinic_patients cp on cp.id = v.patient_id join clinics c on c.id = v.clinic_id
       where cp.pet_id = p_pet), '[]'::jsonb),
     'appointments', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'starts_at', a.starts_at, 'service', a.service,
-        'status', a.status, 'place', a.place, 'address', a.address, 'clinic', c.name) order by a.starts_at)
+        'status', a.status, 'place', a.place, 'address', a.address, 'clinic', c.name, 'confirmed_at', a.confirmed_at) order by a.starts_at)
       from clinic_appointments a join clinic_patients cp on cp.id = a.patient_id join clinics c on c.id = a.clinic_id
       where cp.pet_id = p_pet and a.starts_at >= now() - interval '3 hours'
         and a.status in ('solicitada', 'agendada', 'en_camino')), '[]'::jsonb));
@@ -1713,3 +1713,64 @@ begin
   return a_id;
 end $$;
 grant execute on function public.alert_emergency(uuid, uuid, text) to authenticated;
+
+-- ---------- Aviso al tutor 1 hora antes de su hora ----------
+-- Al tutor le llega "Tu hora es a las 15:00" con Confirmo / No puedo ir; la
+-- clínica ve en la agenda quién confirmó. Lo corre pg_cron cada 5 minutos y
+-- también la app de la clínica al abrirse.
+alter table public.clinic_appointments add column if not exists reminded_at timestamptz;
+alter table public.clinic_appointments add column if not exists confirmed_at timestamptz;
+
+create or replace function public.send_appointment_reminders() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  with due as (
+    update clinic_appointments a set reminded_at = now()
+    from clinic_patients cp
+    where cp.id = a.patient_id and cp.tutor_user is not null and a.reminded_at is null
+      and a.status = 'agendada' and a.service <> 'urgencia'
+      and a.starts_at between now() + interval '5 minutes' and now() + interval '65 minutes'
+    returning a.*, cp.tutor_user
+  )
+  insert into notifications (user_id, type, title, body, url)
+  select d.tutor_user, 'info',
+    '⏰ ' || d.patient_name || ' tiene hora hoy a las ' || to_char(d.starts_at at time zone 'America/Santiago', 'HH24:MI'),
+    service_name(d.service) || case when d.place = 'domicilio' then ' a domicilio' else ' en ' || c.name end
+      || '. Toca para confirmar que vas.',
+    '#/hora/' || d.id
+  from due d join clinics c on c.id = d.clinic_id;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+do $$ begin
+  if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
+    create extension if not exists pg_cron;
+    perform cron.schedule('kiltrazo-recordatorios-horas', '*/5 * * * *', 'select public.send_appointment_reminders()');
+  end if;
+exception when others then null;
+end $$;
+
+-- Lo que ve el tutor al tocar el aviso: su hora, con la clínica.
+create or replace function public.my_appointment(p_appt uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', a.id, 'starts_at', a.starts_at, 'service', a.service, 'status', a.status,
+    'place', a.place, 'address', a.address, 'confirmed_at', a.confirmed_at, 'pet', cp.name,
+    'clinic', c.name, 'clinic_phone', c.phone, 'clinic_address', c.address, 'lat', c.lat, 'lng', c.lng)
+  from clinic_appointments a join clinic_patients cp on cp.id = a.patient_id
+  join pets p on p.id = cp.pet_id join clinics c on c.id = a.clinic_id
+  where a.id = p_appt and p.owner_id = auth.uid();
+$$;
+grant execute on function public.my_appointment(uuid) to authenticated;
+
+create or replace function public.confirm_my_appointment(p_appt uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  update clinic_appointments set confirmed_at = now()
+  where id = p_appt and status in ('agendada', 'en_camino')
+    and patient_id in (select cp.id from clinic_patients cp join pets p on p.id = cp.pet_id where p.owner_id = auth.uid());
+  if not found then raise exception 'Hora no encontrada'; end if;
+  return true;
+end $$;
+grant execute on function public.confirm_my_appointment(uuid) to authenticated;
