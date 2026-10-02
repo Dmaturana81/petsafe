@@ -3,6 +3,7 @@ import { mountScanner } from '../scanner.js';
 import { esc, toast, go } from '../ui.js';
 import { SPECIES, breedOptions } from '../breeds.js';
 import { pendingTransfer, forget } from './receive.js';
+import { shouldOfferAccount } from './save-account.js';
 
 // Pantalla 1: registrar mascota (escaneo facial + datos).
 export default async function register(el, _params, { user }) {
@@ -68,6 +69,9 @@ export default async function register(el, _params, { user }) {
     form.vaccines.value = `Las registra ${fromVet.clinic}`;
   }
 
+  // Primera mascota sin correo: ofrecer guardar la cuenta antes de seguir.
+  const next = async (to) => go((await shouldOfferAccount(user).catch(() => false)) ? '#/guardar' : to);
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!scan) return toast('Primero escanea la cara de tu mascota');
@@ -89,13 +93,13 @@ export default async function register(el, _params, { user }) {
         await claimTransfer(fromVet.code, pet.id);
         forget();
         toast(`¡${pet.name} quedó registrada y unida a ${fromVet.clinic}! 🎉`, 'ok');
-        return go('#/perfil');
+        return next('#/perfil');
       } catch (err) {
         toast(`${pet.name} quedó registrada, pero no pudimos unirla a la clínica: ${err.message}`, 'bad');
         return go('#/');
       }
     }
     toast(`¡${pet.name} quedó registrada! 🎉`, 'ok');
-    go('#/');
+    next('#/');
   });
 }

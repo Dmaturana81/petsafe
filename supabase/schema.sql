@@ -678,37 +678,47 @@ begin
   return t;
 end $$;
 
+-- Pasa mascotas, avisos y datos de un usuario a otro. La usan el cambio de
+-- celular (finish_transfer) y el administrador (admin_move_pets); nadie la
+-- llama directo.
+create or replace function public.move_user_data(f uuid, t uuid) returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  update pets set owner_id = t where owner_id = f;
+  get diagnostics n = row_count;
+  update found_reports set finder_id = t where finder_id = f;
+  update notifications set user_id = t where user_id = f;
+  update comments set user_id = t where user_id = f;
+  update contacts set user_id = t where user_id = f;
+  update push_subscriptions set user_id = t where user_id = f;
+  -- La zona para avisos cerca pasa solo si la cuenta aún no tiene una.
+  if not exists (select 1 from user_areas where user_id = t) then
+    update user_areas set user_id = t where user_id = f;
+  end if;
+  -- Kiltrazo Clínica (las tablas se crean más abajo; existen al correr esto).
+  if to_regclass('public.clinic_patients') is not null then
+    update clinic_patients set tutor_user = t where tutor_user = f;
+    update pet_codes set owner_id = t where owner_id = f;
+  end if;
+  -- El perfil solo pasa si la cuenta aún no tiene uno.
+  if not exists (select 1 from profiles where id = t) then
+    update profiles set id = t where id = f;
+  end if;
+  return n;
+end $$;
+revoke execute on function public.move_user_data(uuid, uuid) from public, anon, authenticated;
+
 create or replace function public.finish_transfer(p_token uuid) returns integer
 language plpgsql security definer set search_path = public as $$
-declare f uuid; n integer;
+declare f uuid;
 begin
   delete from user_transfers where token = p_token and created_at > now() - interval '15 minutes'
   returning from_user into f;
   if f is null or auth.uid() is null or f = auth.uid() then return 0; end if;
   -- Solo desde un usuario anónimo: una cuenta con correo nunca se vacía así.
   if not exists (select 1 from auth.users where id = f and is_anonymous) then return 0; end if;
-
-  update pets set owner_id = auth.uid() where owner_id = f;
-  get diagnostics n = row_count;
-  update found_reports set finder_id = auth.uid() where finder_id = f;
-  update notifications set user_id = auth.uid() where user_id = f;
-  update comments set user_id = auth.uid() where user_id = f;
-  update contacts set user_id = auth.uid() where user_id = f;
-  update push_subscriptions set user_id = auth.uid() where user_id = f;
-  -- La zona para avisos cerca pasa solo si la cuenta aún no tiene una.
-  if not exists (select 1 from user_areas where user_id = auth.uid()) then
-    update user_areas set user_id = auth.uid() where user_id = f;
-  end if;
-  -- Kiltrazo Clínica (las tablas se crean más abajo; existen al correr esto).
-  if to_regclass('public.clinic_patients') is not null then
-    update clinic_patients set tutor_user = auth.uid() where tutor_user = f;
-    update pet_codes set owner_id = auth.uid() where owner_id = f;
-  end if;
-  -- El perfil del dispositivo solo pasa si la cuenta aún no tiene uno.
-  if not exists (select 1 from profiles where id = auth.uid()) then
-    update profiles set id = auth.uid() where id = f;
-  end if;
-  return n;
+  return move_user_data(f, auth.uid());
 end $$;
 
 -- ---------- Seguridad (RLS) ----------
@@ -892,6 +902,9 @@ create table if not exists public.clinic_invites (
   role text not null default 'vet' check (role in ('vet', 'recepcion')),
   created_at timestamptz not null default now()
 );
+-- Código que deja a la persona como administradora (lo usa el administrador
+-- de Kiltrazo cuando una clínica se queda sin quien la administre).
+alter table public.clinic_invites add column if not exists make_admin boolean not null default false;
 
 -- Pacientes de la clínica. pet_id: la mascota de Kiltrazo, si el tutor la
 -- vinculó con su código; tutor_user recibe los recordatorios en la app.
@@ -1056,17 +1069,18 @@ begin
   return c;
 end $$;
 
-create or replace function public.create_clinic_invite(p_clinic uuid, p_role text) returns text
+drop function if exists public.create_clinic_invite(uuid, text);
+create or replace function public.create_clinic_invite(p_clinic uuid, p_role text, p_admin boolean default false) returns text
 language plpgsql security definer set search_path = public as $$
 declare c text;
 begin
-  if not is_clinic_admin(p_clinic) then raise exception 'Solo quien administra la clínica'; end if;
+  if not (is_clinic_admin(p_clinic) or is_admin()) then raise exception 'Solo quien administra la clínica'; end if;
   delete from clinic_invites where created_at < now() - interval '7 days';
   loop
     c := short_code(6);
     exit when not exists (select 1 from clinic_invites where code = c);
   end loop;
-  insert into clinic_invites (code, clinic_id, role) values (c, p_clinic, p_role);
+  insert into clinic_invites (code, clinic_id, role, make_admin) values (c, p_clinic, p_role, coalesce(p_admin, false));
   return c;
 end $$;
 
@@ -1078,9 +1092,10 @@ begin
   delete from clinic_invites where code = upper(trim(p_code)) and created_at > now() - interval '7 days'
   returning * into i;
   if i.code is null then raise exception 'El código no existe o ya venció. Pide uno nuevo.'; end if;
-  insert into clinic_members (clinic_id, user_id, name, role)
-  values (i.clinic_id, auth.uid(), coalesce(p_member_name, ''), i.role)
-  on conflict (clinic_id, user_id) do update set role = excluded.role, name = excluded.name;
+  insert into clinic_members (clinic_id, user_id, name, role, is_admin)
+  values (i.clinic_id, auth.uid(), coalesce(p_member_name, ''), i.role, i.make_admin)
+  on conflict (clinic_id, user_id) do update set role = excluded.role, name = excluded.name,
+    is_admin = clinic_members.is_admin or excluded.is_admin;
   return i.clinic_id;
 end $$;
 
@@ -1594,3 +1609,32 @@ language sql stable security definer set search_path = public as $$
   join clinics c on c.id = o.clinic_id, jsonb_each(o.schedule) d
   where me.clinic_id = p_clinic and me.user_id = auth.uid();
 $$;
+
+-- ---------- Administrador de Kiltrazo y cuentas perdidas ----------
+
+-- Nombrar o quitar a quien administra una clínica. Lo hace quien ya la
+-- administra o el administrador de Kiltrazo. Siempre queda al menos uno.
+create or replace function public.set_clinic_admin(p_clinic uuid, p_user uuid, p_admin boolean) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if not (is_clinic_admin(p_clinic) or is_admin()) then raise exception 'Solo quien administra la clínica'; end if;
+  if not p_admin and not exists (
+    select 1 from clinic_members where clinic_id = p_clinic and is_admin and user_id <> p_user
+  ) then
+    raise exception 'La clínica necesita al menos una persona que la administre';
+  end if;
+  update clinic_members set is_admin = p_admin where clinic_id = p_clinic and user_id = p_user;
+  return found;
+end $$;
+
+-- Alguien perdió su celular y no tenía correo: el administrador de Kiltrazo
+-- pasa sus mascotas a la cuenta nueva (después de confirmar por teléfono).
+create or replace function public.admin_move_pets(p_from uuid, p_to uuid) returns integer
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Solo administradores'; end if;
+  if p_from = p_to or not exists (select 1 from auth.users where id = p_to) then
+    raise exception 'Elige otra cuenta';
+  end if;
+  return move_user_data(p_from, p_to);
+end $$;

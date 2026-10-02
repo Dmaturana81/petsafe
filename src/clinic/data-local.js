@@ -115,14 +115,28 @@ export async function joinClinic(code, memberName) {
   const inv = await get('clinic_invites', code.trim().toUpperCase());
   if (!inv) throw new Error('El código no existe o ya venció. Pide uno nuevo.');
   await del('clinic_invites', inv.id);
-  await addMember(inv.clinicId, (await app.currentUser()).id, memberName, inv.role);
+  await addMember(inv.clinicId, (await app.currentUser()).id, memberName, inv.role, Boolean(inv.makeAdmin));
   return inv.clinicId;
 }
 
-export async function createInvite(clinicId, role) {
+export async function createInvite(clinicId, role, admin = false) {
   const code = shortCode();
-  await put('clinic_invites', { id: code, clinicId, role, createdAt: now() });
+  await put('clinic_invites', { id: code, clinicId, role, makeAdmin: admin, createdAt: now() });
   return code;
+}
+
+export async function setClinicAdmin(clinicId, userId, admin) {
+  const team = await members(clinicId);
+  if (!admin && !team.some((m) => m.isAdmin && m.userId !== userId)) {
+    throw new Error('La clínica necesita al menos una persona que la administre');
+  }
+  return update('clinic_members', `${clinicId}:${userId}`, { isAdmin: admin });
+}
+
+export async function allClinics() {
+  const team = await all('clinic_members');
+  return (await all('clinics')).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    .map((c) => ({ ...c, members: team.filter((m) => m.clinicId === c.id) }));
 }
 
 // ---------- Mascotas de Kiltrazo ----------

@@ -21,6 +21,7 @@ export const signOut = call('signOut');
 export const loginEmail = call('loginEmail');
 export const finishEmailLink = call('finishEmailLink');
 export const listUsers = call('listUsers');
+export const moveUserPets = call('moveUserPets');
 export const registerPet = call('registerPet');
 export const trainingPhotos = call('trainingPhotos');
 export const myPets = call('myPets');

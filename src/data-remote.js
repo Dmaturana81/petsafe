@@ -150,6 +150,11 @@ export async function loginEmail() {
   return user.email;
 }
 
+// El administrador pasa las mascotas de una cuenta a otra (celular perdido).
+export async function moveUserPets(fromId, toId) {
+  return run(sb().rpc('admin_move_pets', { p_from: fromId, p_to: toId }));
+}
+
 export async function listUsers() {
   return rows(await run(sb().from('profiles').select('*').order('created_at')));
 }
