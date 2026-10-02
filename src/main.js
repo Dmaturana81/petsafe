@@ -4,6 +4,7 @@ import { currentUser, myNotifications, deliverPending, enablePush, finishEmailLi
 import { esc, isComplete } from './ui.js';
 import { unlockAudio, startAlarm, checkAlarms } from './alarm.js';
 import { refreshArea } from './nearby.js';
+import './install.js';
 
 import home from './views/home.js';
 import profile from './views/profile.js';
@@ -22,8 +23,15 @@ import privacy from './views/privacy.js';
 import receive, { pendingTransfer, TRANSFER_KEY } from './views/receive.js';
 import clinicsMap from './views/clinics-map.js';
 import appointment from './views/appointment.js';
+import clinicPage from './views/clinic-page.js';
 
 registerSW({ immediate: true });
+
+// Enlace corto de la página de una clínica (…/?c=nombre, el que apunta su dominio .cl).
+const shortSlug = new URLSearchParams(location.search).get('c');
+if (shortSlug && (!location.hash || location.hash === '#/')) {
+  history.replaceState(null, '', `${location.pathname}#/c/${encodeURIComponent(shortSlug)}`);
+}
 
 const routes = [
   ['', home],
@@ -43,6 +51,8 @@ const routes = [
   ['recibir/:code', receive],
   ['clinicas', clinicsMap],
   ['hora/:id', appointment],
+  ['c/:slug', clinicPage],
+  ['c/:slug/:step', clinicPage],
 ];
 
 function resolve(hash) {
@@ -100,8 +110,10 @@ async function render() {
     location.hash = `#/recibir/${later.code}`;
     return;
   }
+  // La página de una clínica se ve sin la app: sin menú y sin pedir el perfil.
+  document.body.classList.toggle('web-mode', view === clinicPage);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
-  if (!isComplete(user) && view !== profile && view !== admin && view !== password && view !== privacy) view = profile;
+  if (!isComplete(user) && ![profile, admin, password, privacy, clinicPage].includes(view)) view = profile;
 
   const tab = hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));

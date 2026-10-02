@@ -6,6 +6,7 @@ import './clinic.css';
 import { esc } from '../ui.js';
 import { session, myClinics, members, activeClinicId, setActiveClinic, listAppointments, dueVaccines, runReminders, pendingRequests, today } from './data.js';
 import { ROLES } from './ui.js';
+import { brandWithLogo } from './logo.js';
 import start from './views/start.js';
 import agenda, { waiting } from './views/agenda.js';
 import patients, { patientForm, linkForm } from './views/patients.js';
@@ -79,7 +80,7 @@ export default async function clinicApp(el, path, { refresh }) {
   el.innerHTML = `
     <div class="ck">
       <aside class="ck-side">
-        <div class="ck-brand"><img src="brand/kiltrazo.svg" alt="Kiltrazo" class="ck-logo"><b>Clínica</b></div>
+        <div class="ck-brand">${clinic.logo ? brandWithLogo(clinic.logo, clinic.name) : '<img src="brand/kiltrazo.svg" alt="Kiltrazo" class="ck-logo"><b>Clínica</b>'}</div>
         ${clinics.length > 1
           ? `<select class="ck-clinic-pick" aria-label="Clínica">${clinics.map((c) => `<option value="${c.id}" ${c.id === clinic.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`
           : `<div class="ck-clinic">${esc(clinic.name)}</div>`}

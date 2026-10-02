@@ -68,9 +68,9 @@ export async function removeMember(clinicId, userId) {
   return run(sb().from('clinic_members').delete().eq('clinic_id', clinicId).eq('user_id', userId));
 }
 
-export async function saveClinic({ id, name, address, phone, homeVisits, onlyHome = false, lat = null, lng = null, onMap, emergencies, hours = '', travelMinutes = 30 }) {
+export async function saveClinic({ id, name, address, phone, homeVisits, onlyHome = false, logo, lat = null, lng = null, onMap, emergencies, hours = '', travelMinutes = 30 }) {
   return run(sb().from('clinics').update({
-    name, address, phone, home_visits: Boolean(homeVisits), only_home: Boolean(onlyHome), lat, lng, on_map: Boolean(onMap), emergencies: Boolean(emergencies), hours,
+    name, address, phone, home_visits: Boolean(homeVisits), only_home: Boolean(onlyHome), ...(logo !== undefined ? { logo } : {}), lat, lng, on_map: Boolean(onMap), emergencies: Boolean(emergencies), hours,
     travel_minutes: travelMinutes,
   }).eq('id', id));
 }
@@ -199,6 +199,20 @@ export async function claimTransfer(code, petId) {
 }
 
 // ---------- Mapa de clínicas (urgencias) ----------
+
+// ---------- Página propia de la clínica (también para quien no tiene la app) ----------
+
+export async function publicClinic(slug) {
+  const r = await run(sb().rpc('public_clinic', { p_slug: slug }));
+  return r ? camel(r) : null;
+}
+
+// Necesita la sesión (anónima) de la app: la página llama antes a currentUser().
+export async function guestRequestAppointment({ clinicId, tutor, pet, place, service, startsAt, address = '', notes = '' }) {
+  return run(sb().rpc('guest_request_appointment', {
+    p_clinic: clinicId, p_tutor: tutor, p_pet: pet, p_place: place, p_service: service, p_starts_at: startsAt, p_address: address, p_notes: notes,
+  }));
+}
 
 export async function nearbyClinics(lat = null, lng = null, km = 50) {
   return (await run(sb().rpc('nearby_clinics', { p_lat: lat, p_lng: lng, p_km: km }))).map(camel);

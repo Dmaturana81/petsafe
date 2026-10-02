@@ -95,7 +95,7 @@ function tomorrowAt10() {
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T10:00`;
 }
 
-export function bookForm(clinics, pets = null) {
+export function bookForm(clinics, pets = null, guest = false) {
   return `
     ${pets ? petPick(pets) : ''}
     ${clinics.length > 1 ? `<label>Clínica<select name="clinic">${clinics.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>`
@@ -115,7 +115,8 @@ export function bookForm(clinics, pets = null) {
       <small class="muted" data-here-ok hidden>Ubicación agregada ✓</small>
     </div>
     <label>Comentario (opcional)<textarea name="notes" rows="2" maxlength="300" placeholder="Ej: tose desde ayer"></textarea></label>
-    <p class="small muted">La clínica confirmará la hora y te avisaremos aquí.${pets ? ' Verá el nombre, tipo, raza y foto de tu mascota, y tu nombre, teléfono y correo.' : ''}</p>
+    <p class="small muted">${guest ? 'La clínica te confirmará la hora por teléfono o WhatsApp. Solo ella verá tus datos.'
+      : `La clínica confirmará la hora y te avisaremos aquí.${pets ? ' Verá el nombre, tipo, raza y foto de tu mascota, y tu nombre, teléfono y correo.' : ''}`}</p>
     <button class="btn primary">Enviar solicitud</button>`;
 }
 
@@ -126,8 +127,11 @@ export function petPick(pets) {
     : `<input type="hidden" name="pet" value="${pets[0].id}">`;
 }
 
-/** pet = null: la mascota sale del formulario (pedir hora desde el mapa). */
-export async function bindBook(form, openBtn, clinics, pet, reload) {
+/**
+ * pet = null: la mascota sale del formulario (pedir hora desde el mapa).
+ * opts.submit: otra forma de enviar la solicitud (quien pide hora sin la app).
+ */
+export async function bindBook(form, openBtn, clinics, pet, reload, opts = {}) {
   let point = null;
   const user = await currentUser().catch(() => null);
   form.address.value = user?.address || '';
@@ -189,7 +193,7 @@ export async function bindBook(form, openBtn, clinics, pet, reload) {
   };
   sync();
   form.addEventListener('change', sync);
-  openBtn.addEventListener('click', () => { form.hidden = !form.hidden; openBtn.hidden = !form.hidden; });
+  openBtn?.addEventListener('click', () => { form.hidden = !form.hidden; openBtn.hidden = !form.hidden; });
   form.querySelector('[data-here]').addEventListener('click', async () => {
     point = await getLocation();
     form.querySelector('[data-here-ok]').hidden = !point;
@@ -202,14 +206,18 @@ export async function bindBook(form, openBtn, clinics, pet, reload) {
     btn.disabled = true;
     const place = form.place.value;
     try {
-      await requestAppointment({
-        petId: pet ? pet.id : form.pet.value, clinicId: form.clinic.value, place, service: form.service.value,
+      const req = {
+        clinicId: form.clinic.value, place, service: form.service.value,
         startsAt: new Date(slotsBox.hidden ? form.when.value : slot).toISOString(),
         address: place === 'domicilio' ? form.address.value : '',
         lat: place === 'domicilio' ? point?.lat ?? null : null, lng: place === 'domicilio' ? point?.lng ?? null : null,
         notes: form.notes.value,
-      });
-      toast('¡Solicitud enviada! Te avisaremos cuando la confirmen.', 'ok');
+      };
+      if (opts.submit) await opts.submit(req);
+      else {
+        await requestAppointment({ petId: pet ? pet.id : form.pet.value, ...req });
+        toast('¡Solicitud enviada! Te avisaremos cuando la confirmen.', 'ok');
+      }
       reload();
     } catch (err) {
       toast(err.message, 'bad');

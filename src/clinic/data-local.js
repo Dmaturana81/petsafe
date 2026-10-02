@@ -94,6 +94,7 @@ export async function removeMember(clinicId, userId) {
 
 export async function saveClinic(c) {
   return update('clinics', c.id, {
+    ...(c.logo !== undefined ? { logo: c.logo } : {}),
     name: c.name, address: c.address, phone: c.phone, onlyHome: Boolean(c.onlyHome), homeVisits: Boolean(c.homeVisits || c.onlyHome),
     lat: c.lat ?? null, lng: c.lng ?? null, onMap: Boolean(c.onMap), emergencies: Boolean(c.emergencies && !c.onlyHome), hours: c.hours || '',
     travelMinutes: c.travelMinutes ?? 30,
@@ -106,7 +107,7 @@ async function addMember(clinicId, userId, name, role, isAdmin = false) {
 
 export async function createClinic({ name, address, phone, memberName, role }) {
   const me = await app.currentUser();
-  const c = await put('clinics', { id: uuid(), name, address, phone, approved: false, createdBy: me.id, createdAt: now() });
+  const c = await put('clinics', { id: uuid(), name, address, phone, approved: false, slug: await makeSlug(name), createdBy: me.id, createdAt: now() });
   await addMember(c.id, me.id, memberName, role || 'vet', true);
   return c.id;
 }
@@ -316,7 +317,7 @@ export async function requestAppointment({ petId, clinicId, place, service, star
   if (pet?.ownerId !== me.id) throw new Error('Primero comparte tu mascota con la clínica');
   let cp = (await list('clinic_patients', { clinicId, petId }))[0];
   // Clínica del mapa: pedir hora la comparte, igual que el código.
-  if (!cp && !(clinic?.onMap && clinic.approved !== false)) throw new Error('Primero comparte tu mascota con la clínica');
+  if (!cp && !(clinic && clinic.approved !== false)) throw new Error('Primero comparte tu mascota con la clínica');
   if (!cp) cp = await get('clinic_patients', await patientFromPet(clinicId, pet));
   if (place === 'domicilio' && !clinic.homeVisits) throw new Error('Esta clínica no hace visitas a domicilio');
   if (place === 'clinica' && clinic.onlyHome) throw new Error('Este veterinario atiende solo a domicilio');
@@ -425,6 +426,63 @@ export async function claimTransfer(code, petId) {
 }
 
 // ---------- Mapa de clínicas (urgencias) ----------
+
+// ---------- Página propia de la clínica (también para quien no tiene la app) ----------
+
+async function makeSlug(name) {
+  const base = (name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '') || 'clinica';
+  const taken = new Set((await all('clinics')).map((c) => c.slug));
+  let s = base;
+  for (let n = 2; taken.has(s); n++) s = `${base}-${n}`;
+  return s;
+}
+
+export async function publicClinic(slug) {
+  const c = (await all('clinics')).find((x) => x.slug === String(slug).toLowerCase() && x.approved !== false);
+  if (!c) return null;
+  return {
+    id: c.id, name: c.name, slug: c.slug, logo: c.logo || null, address: c.address, phone: c.phone, hours: c.hours || '',
+    homeVisits: Boolean(c.homeVisits), onlyHome: Boolean(c.onlyHome), emergencies: Boolean(c.emergencies),
+    lat: c.onlyHome ? null : c.lat ?? null, lng: c.onlyHome ? null : c.lng ?? null,
+  };
+}
+
+export async function guestRequestAppointment({ clinicId, tutor, pet, place, service, startsAt, address = '', notes = '' }) {
+  const me = await app.currentUser().catch(() => null);
+  const clinic = await get('clinics', clinicId);
+  if (!clinic || clinic.approved === false) throw new Error('Clínica no encontrada');
+  const name = (tutor.name || '').trim();
+  const phone = (tutor.phone || '').trim();
+  const petName = (pet.name || '').trim();
+  if (!name || phone.replace(/\D/g, '').length < 8) throw new Error('Escribe tu nombre y tu teléfono');
+  if (!petName) throw new Error('Escribe el nombre de tu mascota');
+  if (place === 'domicilio' && !clinic.homeVisits) throw new Error('Esta clínica no hace visitas a domicilio');
+  if (place === 'clinica' && clinic.onlyHome) throw new Error('Este veterinario atiende solo a domicilio');
+  if (place === 'domicilio' && !address.trim()) throw new Error('Falta la dirección');
+  if (startsAt < now()) throw new Error('Elige una fecha futura');
+  let vetId = null;
+  if (await hasSchedule(clinicId, place)) {
+    vetId = await freeVet(clinicId, place, startsAt);
+    if (!vetId) throw new Error('Esa hora ya no está disponible. Elige otra.');
+  }
+  const last9 = (p) => String(p || '').replace(/\D/g, '').slice(-9);
+  let cp = (await list('clinic_patients', { clinicId }))
+    .find((p) => !p.petId && p.name.toLowerCase() === petName.toLowerCase() && last9(p.tutorPhone) === last9(phone));
+  if (!cp) {
+    cp = await insert('clinic_patients', {
+      clinicId, name: petName, species: pet.species || '', breed: pet.breed || '', sex: '', neutered: false, birthDate: null, chip: '', color: '',
+      allergies: '', notes: '', tutorName: name, tutorPhone: phone, tutorEmail: (tutor.email || '').trim().toLowerCase(),
+      tutorAddress: place === 'domicilio' ? address.trim() : '', withoutApp: true,
+    });
+  } else if (place === 'domicilio') await update('clinic_patients', cp.id, { tutorAddress: address.trim() });
+  const a = await insert('clinic_appointments', {
+    clinicId, patientId: cp.id, patientName: petName, service, startsAt, status: 'solicitada', place, minutes: 30,
+    address: place === 'domicilio' ? address.trim() : '', notes: notes.slice(0, 300), requestedBy: me?.id || null, vetId,
+  });
+  await tellClinic(clinicId, 'Nueva solicitud de hora 📅', `${petName} · ${SERVICE[service] || 'Hora'}${place === 'domicilio' ? ' a domicilio' : ''} · ${when(startsAt)} · sin app: confírmale por WhatsApp`, '#/clinica/solicitudes');
+  return a.id;
+}
 
 export async function nearbyClinics(lat = null, lng = null, km = 50) {
   const here = lat != null && lng != null ? { lat, lng } : null;

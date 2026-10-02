@@ -5,6 +5,7 @@ import { createAccount } from '../../data.js';
 import { mountEmailLogin } from '../../views/login-email.js';
 import { esc, toast, getLocation } from '../../ui.js';
 import { createClinic, joinClinic, saveClinic, setActiveClinic } from '../data.js';
+import { logoField, bindLogo } from '../logo.js';
 
 export default function start(el, { session, refresh, pendingCode }) {
   const intro = `
@@ -66,6 +67,7 @@ export default function start(el, { session, refresh, pendingCode }) {
             <label><span data-k="clinica">Dirección</span><span data-k="domicilio" hidden>Comuna o zona donde atiendes</span>
               <input name="address" placeholder="Calle, número, comuna"></label>
             <label>Teléfono<input name="phone" type="tel" placeholder="+56 2 2345 6789"></label>
+            ${logoField()}
             <label>Tu nombre<input name="memberName" required placeholder="Dra. Camila Rojas"></label>
             <label data-k="clinica">Tu rol<select name="role"><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select></label>
             <label class="ck-check"><input type="checkbox" name="onMap" checked> Aparecer en “Clínicas cercanas” de la app, para que los tutores te encuentren</label>
@@ -105,6 +107,7 @@ export default function start(el, { session, refresh, pendingCode }) {
     }
   });
   bindKind(el.querySelector('#ck-create'));
+  const logo = bindLogo(el.querySelector('#ck-create'));
   // Ubicación para aparecer en "Clínicas cercanas": se pregunta al crearla.
   let point = null;
   const pick = el.querySelector('#ck-map-pick');
@@ -126,9 +129,9 @@ export default function start(el, { session, refresh, pendingCode }) {
     const onlyHome = d.kind === 'domicilio';
     const c = { name: d.name.trim(), address: d.address, phone: d.phone };
     const id = await createClinic({ ...c, memberName: d.memberName.trim(), role: onlyHome ? 'vet' : d.role });
-    if (d.onMap || d.emergencies || onlyHome) {
+    if (d.onMap || d.emergencies || onlyHome || logo()) {
       await saveClinic({
-        id, ...c, onlyHome, homeVisits: onlyHome, onMap: Boolean(d.onMap), emergencies: !onlyHome && Boolean(d.emergencies),
+        id, ...c, onlyHome, logo: logo() || undefined, homeVisits: onlyHome, onMap: Boolean(d.onMap), emergencies: !onlyHome && Boolean(d.emergencies),
         lat: point?.lat ?? null, lng: point?.lng ?? null,
       });
     }

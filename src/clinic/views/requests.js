@@ -17,7 +17,7 @@ export default async function requests(el, _params, ctx) {
 
   el.innerHTML = `
     <header class="ck-head">
-      <div><h1>Solicitudes de hora</h1><p class="ck-sub">Las pidieron los tutores desde Kiltrazo. Al confirmar o rechazar, les llega un aviso.</p></div>
+      <div><h1>Solicitudes de hora</h1><p class="ck-sub">Las pidieron los tutores desde Kiltrazo o desde tu página. Al confirmar o rechazar, les llega un aviso.</p></div>
     </header>
     ${list.length ? list.map((a) => {
       const p = byId.get(a.patientId) || {};
@@ -30,6 +30,8 @@ export default async function requests(el, _params, ctx) {
           <span class="ck-pill ${a.place === 'domicilio' ? 'en_camino' : 'solicitada'}">${a.place === 'domicilio' ? '🏠 A domicilio' : '🏥 En la clínica'}</span>
         </div>
         <p class="small"><strong>${SERVICES[a.service] || 'Hora'}</strong> · pidió el ${esc(fmtDay(localDay(new Date(a.startsAt))))} a las ${fmtTime(a.startsAt)}${a.notes ? `<br>“${esc(a.notes)}”` : ''}</p>
+        ${!p.tutorUser && p.tutorPhone ? `<p class="ck-guest small">📵 Pidió sin la app: confírmale por WhatsApp.
+          <a class="btn whatsapp small" target="_blank" rel="noopener" href="${waLink(p.tutorPhone)}?text=${encodeURIComponent(`Hola ${p.tutorName || ''}, te escribimos de ${clinic.name} por la hora de ${a.patientName} el ${fmtDay(localDay(new Date(a.startsAt)))} a las ${fmtTime(a.startsAt)}. ¿Te la confirmamos?`)}">💬 WhatsApp</a></p>` : ''}
         ${a.place === 'domicilio' ? `<p class="small">🏠 ${esc(a.address)}${route ? ` · <a href="${route.google}" target="_blank" rel="noopener">Ver en el mapa</a>` : ''}</p>` : ''}
         <div class="ck-req-grid" hidden>
           <label>Día<input type="date" name="day" required value="${localDay(new Date(a.startsAt))}"></label>
@@ -52,7 +54,7 @@ export default async function requests(el, _params, ctx) {
       try {
         await saveAppointment({ id: a.id, status: 'agendada', startsAt: new Date(`${f.day}T${f.time}`).toISOString(), vetId: f.vetId || null });
         await tell(a.id, 'confirmada');
-        toast('Confirmada. Le avisamos al tutor.', 'ok');
+        toast(byId.get(a.patientId)?.tutorUser ? 'Confirmada. Le avisamos al tutor.' : 'Confirmada. Avísale al tutor por WhatsApp.', 'ok');
         ctx.refresh();
       } catch (err) {
         toast(err.message, 'bad');
