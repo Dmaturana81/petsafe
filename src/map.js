@@ -65,9 +65,9 @@ export function directionsUrl({ lat, lng }, mode) {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=${mode}`;
 }
 
-const clinicIcon = (urgent) => L.divIcon({
+const clinicIcon = (urgent, home = false) => L.divIcon({
   className: `clinic-marker${urgent ? ' urgent' : ''}`,
-  html: '<span>🏥</span>',
+  html: `<span>${home ? '🏠' : '🏥'}</span>`,
   iconSize: [40, 40],
   iconAnchor: [20, 36],
 });
@@ -78,7 +78,9 @@ export function showClinics(el, clinics, here, onPick) {
   const map = base(el, [first.lat, first.lng], here ? 13 : 12);
   if (here) L.circleMarker([here.lat, here.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#4f7fb8', fillOpacity: 1 }).addTo(map);
   for (const c of clinics) {
-    L.marker([c.lat, c.lng], { icon: clinicIcon(c.emergencies), title: c.name }).addTo(map).on('click', () => onPick(c));
+    // Veterinario a domicilio: el punto es aproximado, así que se marca su zona.
+    if (c.onlyHome) L.circle([c.lat, c.lng], { radius: 1000, color: '#4f7fb8', weight: 2, dashArray: '6 6', fillOpacity: 0.12 }).addTo(map);
+    L.marker([c.lat, c.lng], { icon: clinicIcon(c.emergencies, c.onlyHome), title: c.name }).addTo(map).on('click', () => onPick(c));
   }
   if (here && clinics.length) map.fitBounds(L.latLngBounds([[here.lat, here.lng], ...clinics.slice(0, 3).map((c) => [c.lat, c.lng])]).pad(0.2), { maxZoom: 15 });
   return map;

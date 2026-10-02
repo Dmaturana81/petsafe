@@ -68,9 +68,9 @@ export async function removeMember(clinicId, userId) {
   return run(sb().from('clinic_members').delete().eq('clinic_id', clinicId).eq('user_id', userId));
 }
 
-export async function saveClinic({ id, name, address, phone, homeVisits, lat = null, lng = null, onMap, emergencies, hours = '', travelMinutes = 30 }) {
+export async function saveClinic({ id, name, address, phone, homeVisits, onlyHome = false, lat = null, lng = null, onMap, emergencies, hours = '', travelMinutes = 30 }) {
   return run(sb().from('clinics').update({
-    name, address, phone, home_visits: Boolean(homeVisits), lat, lng, on_map: Boolean(onMap), emergencies: Boolean(emergencies), hours,
+    name, address, phone, home_visits: Boolean(homeVisits), only_home: Boolean(onlyHome), lat, lng, on_map: Boolean(onMap), emergencies: Boolean(emergencies), hours,
     travel_minutes: travelMinutes,
   }).eq('id', id));
 }

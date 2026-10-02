@@ -101,7 +101,7 @@ export function bookForm(clinics, pets = null) {
     ${clinics.length > 1 ? `<label>Clínica<select name="clinic">${clinics.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>`
       : `<input type="hidden" name="clinic" value="${clinics[0].id}">`}
     <fieldset class="vet-place">
-      <label class="pick"><input type="radio" name="place" value="clinica" checked> 🏥 En la clínica</label>
+      <label class="pick" data-clinic><input type="radio" name="place" value="clinica" checked> 🏥 En la clínica</label>
       <label class="pick" data-home><input type="radio" name="place" value="domicilio"> 🏠 A domicilio</label>
     </fieldset>
     <label>Motivo<select name="service">
@@ -178,6 +178,10 @@ export async function bindBook(form, openBtn, clinics, pet, reload) {
     const home = form.querySelector('[data-home]');
     home.hidden = !c.homeVisits;
     if (!c.homeVisits) form.place.value = 'clinica';
+    // Veterinario independiente: solo a domicilio, sin elegir lugar.
+    form.querySelector('[data-clinic]').hidden = Boolean(c.onlyHome);
+    form.querySelector('.vet-place').hidden = Boolean(c.onlyHome);
+    if (c.onlyHome) form.place.value = 'domicilio';
     const isHome = form.place.value === 'domicilio';
     form.querySelector('.vet-address').hidden = !isHome;
     form.address.required = isHome;

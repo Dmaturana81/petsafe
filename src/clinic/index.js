@@ -89,7 +89,7 @@ export default async function clinicApp(el, path, { refresh }) {
           ${link('solicitudes', '#/clinica/solicitudes', 'Solicitudes de hora', asked.length, true)}
           ${clinic.homeVisits ? link('domicilio', '#/clinica/domicilio', 'A domicilio', homeToday) : ''}
           ${link('pacientes', '#/clinica/pacientes', 'Pacientes')}
-          ${link('sala', '#/clinica/sala', 'Sala de espera', inRoom)}
+          ${clinic.onlyHome ? '' : link('sala', '#/clinica/sala', 'Sala de espera', inRoom)}
           ${link('vacunas', '#/clinica/vacunas', 'Vacunas por vencer', due.length)}
           ${link('equipo', '#/clinica/equipo', 'Equipo')}
           ${later('Hospitalización', 2)}${later('Documentos', 2)}${later('Inventario', 3)}${later('Caja y boletas', 4)}${later('Reportes', 5)}

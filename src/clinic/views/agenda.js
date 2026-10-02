@@ -26,7 +26,7 @@ export default async function agenda(el, { day = today() }, ctx) {
           <option value="">Todo el equipo</option>
           ${vets.map((v) => `<option value="${v.userId}" ${vetFilter === v.userId ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}
         </select>
-        ${isToday ? '<button class="btn small secondary" id="ck-walkin">Llegó sin hora</button>' : ''}
+        ${isToday && !clinic.onlyHome ? '<button class="btn small secondary" id="ck-walkin">Llegó sin hora</button>' : ''}
         <button class="btn small primary" id="ck-new">+ Nueva hora</button>
       </div>
     </header>
@@ -40,8 +40,9 @@ export default async function agenda(el, { day = today() }, ctx) {
       <label>Día<input name="day" type="date" required value="${day}"></label>
       <label>Hora<input name="time" type="time" required step="300" value="${nextSlot(list, day)}"></label>
       <label>Minutos<input name="minutes" type="number" min="5" max="600" step="5" value="30"></label>
-      ${clinic.homeVisits ? `<label>Lugar<select name="place"><option value="clinica">En la clínica</option><option value="domicilio">A domicilio</option></select></label>
-      <label class="ck-span2 ck-addr" hidden>Dirección<input name="address" placeholder="Calle, número, depto, comuna"></label>` : ''}
+      ${clinic.onlyHome ? '<input type="hidden" name="place" value="domicilio">' : clinic.homeVisits ? `<label>Lugar<select name="place"><option value="clinica">En la clínica</option><option value="domicilio">A domicilio</option></select></label>
+      ` : ''}
+      ${clinic.homeVisits ? '<label class="ck-span2 ck-addr" hidden>Dirección<input name="address" placeholder="Calle, número, depto, comuna"></label>' : ''}
       <label class="ck-span2">Notas<input name="notes" placeholder="Ej.: viene con exámenes"></label>
       <div class="ck-span ck-row-end"><button type="button" class="btn ghost small" data-cancel>Cancelar</button><button class="btn primary small">Guardar hora</button></div>
     </form>
@@ -75,7 +76,7 @@ export default async function agenda(el, { day = today() }, ctx) {
   };
   form.place?.addEventListener('change', syncPlace);
   form.patient.addEventListener('change', syncPlace);
-  el.querySelector('#ck-new').addEventListener('click', () => { delete form.dataset.walkin; form.hidden = false; form.patient.focus(); });
+  el.querySelector('#ck-new').addEventListener('click', () => { delete form.dataset.walkin; form.hidden = false; syncPlace(); form.patient.focus(); });
   form.querySelector('[data-cancel]').addEventListener('click', () => { form.reset(); form.hidden = true; delete form.dataset.walkin; });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

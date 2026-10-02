@@ -274,3 +274,13 @@ body.clinic-mode #view { padding: 0; display: block; }
 }
 .ck-tip { background: var(--cream); border-radius: 12px; padding: 10px 12px; margin: 10px 0 0; }
 .ck-review { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #fff1d6; color: #6b4a00; font-size: 0.85rem; line-height: 1.35; }
+
+/* ¿Cómo atiendes? Clínica con local o independiente a domicilio. */
+.ck-kind { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.ck-kind legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.form .ck-kind label { display: block; margin: 0; }
+.ck-kind input { position: absolute; opacity: 0; pointer-events: none; }
+.ck-kind span { display: block; padding: 11px 14px; border: 2px solid var(--line); border-radius: 12px; font-weight: 700; cursor: pointer; }
+.ck-kind input:checked + span { border-color: var(--orange); background: var(--cream); }
+.ck-kind input:focus-visible + span { outline: 2px solid var(--orange); outline-offset: 2px; }
+.ck-seg.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }

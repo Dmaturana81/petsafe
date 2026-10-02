@@ -94,8 +94,8 @@ export async function removeMember(clinicId, userId) {
 
 export async function saveClinic(c) {
   return update('clinics', c.id, {
-    name: c.name, address: c.address, phone: c.phone, homeVisits: Boolean(c.homeVisits),
-    lat: c.lat ?? null, lng: c.lng ?? null, onMap: Boolean(c.onMap), emergencies: Boolean(c.emergencies), hours: c.hours || '',
+    name: c.name, address: c.address, phone: c.phone, onlyHome: Boolean(c.onlyHome), homeVisits: Boolean(c.homeVisits || c.onlyHome),
+    lat: c.lat ?? null, lng: c.lng ?? null, onMap: Boolean(c.onMap), emergencies: Boolean(c.emergencies && !c.onlyHome), hours: c.hours || '',
     travelMinutes: c.travelMinutes ?? 30,
   });
 }
@@ -319,6 +319,7 @@ export async function requestAppointment({ petId, clinicId, place, service, star
   if (!cp && !(clinic?.onMap && clinic.approved !== false)) throw new Error('Primero comparte tu mascota con la clínica');
   if (!cp) cp = await get('clinic_patients', await patientFromPet(clinicId, pet));
   if (place === 'domicilio' && !clinic.homeVisits) throw new Error('Esta clínica no hace visitas a domicilio');
+  if (place === 'clinica' && clinic.onlyHome) throw new Error('Este veterinario atiende solo a domicilio');
   if (place === 'domicilio' && !address.trim()) throw new Error('Falta la dirección');
   if (startsAt < now()) throw new Error('Elige una fecha futura');
   let vetId = null;
@@ -429,9 +430,11 @@ export async function nearbyClinics(lat = null, lng = null, km = 50) {
   const here = lat != null && lng != null ? { lat, lng } : null;
   return (await all('clinics'))
     .filter((c) => c.onMap && c.approved !== false && c.lat != null && c.lng != null)
+    // Solo a domicilio: el punto se redondea (~1 km) para no mostrar su casa.
+    .map((c) => (c.onlyHome ? { ...c, lat: Math.round(c.lat * 100) / 100, lng: Math.round(c.lng * 100) / 100 } : c))
     .map((c) => ({
       id: c.id, name: c.name, address: c.address, phone: c.phone, lat: c.lat, lng: c.lng,
-      emergencies: Boolean(c.emergencies), homeVisits: Boolean(c.homeVisits), hours: c.hours || '',
+      emergencies: Boolean(c.emergencies), homeVisits: Boolean(c.homeVisits), onlyHome: Boolean(c.onlyHome), hours: c.hours || '',
       km: here ? Math.round(kmBetween(here, c) * 10) / 10 : null,
     }))
     .filter((c) => c.km == null || c.km <= km)
