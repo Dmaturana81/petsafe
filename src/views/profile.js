@@ -1,7 +1,7 @@
 import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, enablePush, loginEmail, createAccount, setPassword, signOut, CLOUD } from '../data.js';
 import { mountEmailLogin } from './login-email.js';
 import { askPermission, notificationsSupported } from '../notify.js';
-import { esc, toast, go, isComplete } from '../ui.js';
+import { esc, toast, go, isComplete, afterSetup } from '../ui.js';
 import { SPECIES, breedOptions, describe } from '../breeds.js';
 import { PROMOS_VERSION, SUPPORT_URL } from '../config.js';
 import { promosBox, supportCard } from './privacy.js';
@@ -158,7 +158,7 @@ export default async function profile(el, _params, { user, refresh }) {
     await saveUser({ id: user?.id, ...data, name: `${data.firstName} ${data.lastName}` });
     if (!user && (await askPermission()) === 'granted') await enablePush().catch(() => {});
     toast('¡Listo!', 'ok');
-    isComplete(user) ? refresh() : go('#/');
+    isComplete(user) ? refresh() : go(afterSetup());
   });
 
   el.querySelector('#make-account')?.addEventListener('submit', async (e) => {

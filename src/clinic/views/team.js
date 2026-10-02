@@ -4,6 +4,8 @@ import { esc, toast, getLocation } from '../../ui.js';
 import { createInvite, removeMember, setClinicAdmin, saveClinic, saveSchedule, busyElsewhere } from '../data.js';
 import { ROLES } from '../ui.js';
 import { kindPick, bindKind } from './start.js';
+import { logoField, bindLogo } from '../logo.js';
+import { webCard, bindWebCard } from '../web.js';
 
 export default function team(el, _params, ctx) {
   const { clinic, team: people, me } = ctx;
@@ -27,6 +29,7 @@ export default function team(el, _params, ctx) {
         ${admin && admins < 2 && people.length > 1 ? '<p class="ck-tip small">💡 Nombra a otra persona como administradora. Así, si pierdes el acceso, la clínica sigue teniendo quien la maneje.</p>' : ''}
       </div>
       <div class="ck-stack">
+        ${webCard(clinic)}
         ${admin ? `
           <div class="card form">
             <h2>Invitar a alguien</h2>
@@ -41,6 +44,7 @@ export default function team(el, _params, ctx) {
             <label>Nombre<input name="name" required maxlength="120" value="${esc(clinic.name)}"></label>
             <label><span data-k="clinica">Dirección</span><span data-k="domicilio" hidden>Comuna o zona donde atiendes</span><input name="address" value="${esc(clinic.address)}"></label>
             <label>Teléfono<input name="phone" type="tel" value="${esc(clinic.phone)}"></label>
+            ${logoField(clinic.logo)}
             <label>Horario<input name="hours" maxlength="120" value="${esc(clinic.hours || '')}" placeholder="Ej.: Lun a Vie 9 a 19, Sáb 10 a 14"></label>
             <label class="ck-check" data-k="clinica"><input type="checkbox" name="homeVisits" ${clinic.homeVisits ? 'checked' : ''}> Hacemos visitas a domicilio (los tutores podrán pedirlas)</label>
             <label>Tiempo de traslado entre visitas a domicilio<select name="travelMinutes">
@@ -65,6 +69,7 @@ export default function team(el, _params, ctx) {
     <div id="ck-sched"></div>`;
 
   mountSchedule(el.querySelector('#ck-sched'), ctx);
+  bindWebCard(el, clinic, ctx.user?.email);
 
   el.querySelector('#ck-inv')?.addEventListener('click', async (e) => {
     e.target.disabled = true;
@@ -115,6 +120,7 @@ export default function team(el, _params, ctx) {
 
   const clinicForm = el.querySelector('#ck-clinic');
   if (clinicForm) bindKind(clinicForm);
+  const logo = clinicForm ? bindLogo(clinicForm) : () => undefined;
   clinicForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -123,7 +129,7 @@ export default function team(el, _params, ctx) {
     try {
       await saveClinic({
         id: clinic.id, name: f.name.trim(), address: f.address.trim(), phone: f.phone.trim(), hours: f.hours.trim(),
-        onlyHome, homeVisits: onlyHome || Boolean(f.homeVisits), emergencies: !onlyHome && Boolean(f.emergencies), onMap: Boolean(f.onMap), travelMinutes: Number(f.travelMinutes) || 30,
+        logo: logo(), onlyHome, homeVisits: onlyHome || Boolean(f.homeVisits), emergencies: !onlyHome && Boolean(f.emergencies), onMap: Boolean(f.onMap), travelMinutes: Number(f.travelMinutes) || 30,
         lat: point?.lat ?? null, lng: point?.lng ?? null,
       });
       toast('Datos guardados', 'ok');

@@ -37,6 +37,20 @@ export function go(hash) {
   else location.hash = hash;
 }
 
+// Volver a donde estaba (por ejemplo, la página de una clínica) después de
+// crear el perfil o registrar la mascota.
+const RETURN_KEY = 'kiltrazo-return';
+export function returnHereLater(hash) {
+  try { localStorage.setItem(RETURN_KEY, hash); } catch { /* sin almacenamiento */ }
+}
+export function afterSetup(fallback = '#/') {
+  try {
+    const to = localStorage.getItem(RETURN_KEY);
+    if (to) { localStorage.removeItem(RETURN_KEY); return to; }
+  } catch { /* sin almacenamiento */ }
+  return fallback;
+}
+
 /** Pide la ubicación actual; devuelve null si el usuario no la da. */
 export function getLocation() {
   return new Promise((resolve) => {

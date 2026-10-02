@@ -1345,7 +1345,8 @@ begin
   where clinic_id = p_clinic and pet_id = p_pet and pet_id in (select id from pets where owner_id = auth.uid());
   select * into c from clinics where id = p_clinic;
   if cp.id is null then
-    if not coalesce(c.on_map and c.approved, false) or not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
+    -- Clínica aprobada (del mapa o de su propia página): pedir hora la comparte.
+    if not coalesce(c.approved, false) or not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
       raise exception 'Primero comparte tu mascota con la clínica';
     end if;
     perform patient_from_pet(p_clinic, p_pet);
@@ -1883,3 +1884,104 @@ language sql stable security definer set search_path = public as $$
   limit 100;
 $$;
 grant execute on function public.nearby_clinics(double precision, double precision, double precision) to anon, authenticated;
+
+-- ---------- Logo y página propia de la clínica; pedir hora sin la app ----------
+-- Logo: imagen chica (data URL) que la clínica sube. Página propia:
+-- …/#/c/<slug>, a la que puede apuntar su dominio .cl.
+alter table public.clinics add column if not exists logo text;
+alter table public.clinics drop constraint if exists clinics_logo_size;
+alter table public.clinics add constraint clinics_logo_size check (logo is null or length(logo) < 400000);
+alter table public.clinics add column if not exists slug text;
+create unique index if not exists clinics_slug on public.clinics (slug);
+alter table public.clinic_patients add column if not exists without_app boolean not null default false;
+
+create or replace function public.make_clinic_slug(p_name text, p_id uuid) returns text
+language plpgsql set search_path = public as $$
+declare base text; s text; n int := 1;
+begin
+  base := trim(both '-' from regexp_replace(translate(lower(coalesce(p_name, '')), 'áàäâéèëêíìïîóòöôúùüûñç', 'aaaaeeeeiiiioooouuuunc'), '[^a-z0-9]+', '-', 'g'));
+  base := left(nullif(base, ''), 40);
+  base := coalesce(trim(both '-' from base), 'clinica');
+  s := base;
+  while exists (select 1 from clinics where slug = s and id <> p_id) loop
+    n := n + 1;
+    s := base || '-' || n;
+  end loop;
+  return s;
+end $$;
+
+create or replace function public.set_clinic_slug() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if new.slug is null or new.slug = '' then new.slug := make_clinic_slug(new.name, new.id); end if;
+  return new;
+end $$;
+drop trigger if exists set_clinic_slug on public.clinics;
+create trigger set_clinic_slug before insert or update on public.clinics
+  for each row execute function public.set_clinic_slug();
+update public.clinics set slug = make_clinic_slug(name, id) where slug is null;
+
+-- Lo que muestra la página de la clínica (solo clínicas aprobadas).
+create or replace function public.public_clinic(p_slug text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', c.id, 'name', c.name, 'slug', c.slug, 'logo', c.logo, 'address', c.address, 'phone', c.phone,
+    'hours', c.hours, 'home_visits', c.home_visits, 'only_home', c.only_home, 'emergencies', c.emergencies,
+    'lat', case when c.only_home then null else c.lat end, 'lng', case when c.only_home then null else c.lng end)
+  from clinics c where c.slug = lower(p_slug) and c.approved;
+$$;
+grant execute on function public.public_clinic(text) to anon, authenticated;
+
+-- Pedir hora sin la app: los datos del tutor y la mascota llegan en el
+-- formulario. La clínica lo confirma por teléfono o WhatsApp.
+create or replace function public.guest_request_appointment(
+  p_clinic uuid, p_tutor jsonb, p_pet jsonb, p_place text, p_service text, p_starts_at timestamptz,
+  p_address text default '', p_notes text default ''
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare c clinics; pid uuid; a_id uuid; v_vet uuid;
+  t_name text := left(trim(coalesce(p_tutor->>'name', '')), 120);
+  t_phone text := left(trim(coalesce(p_tutor->>'phone', '')), 40);
+  t_email text := left(lower(trim(coalesce(p_tutor->>'email', ''))), 120);
+  m_name text := left(trim(coalesce(p_pet->>'name', '')), 80);
+begin
+  if auth.uid() is null then raise exception 'Sin sesión'; end if;
+  select * into c from clinics where id = p_clinic and approved;
+  if c.id is null then raise exception 'Clínica no encontrada'; end if;
+  if t_name = '' or length(regexp_replace(t_phone, '\D', '', 'g')) < 8 then raise exception 'Escribe tu nombre y tu teléfono'; end if;
+  if m_name = '' then raise exception 'Escribe el nombre de tu mascota'; end if;
+  if p_place not in ('clinica', 'domicilio') then raise exception 'Lugar no válido'; end if;
+  if p_place = 'domicilio' and not c.home_visits then raise exception 'Esta clínica no hace visitas a domicilio'; end if;
+  if p_place = 'domicilio' and coalesce(trim(p_address), '') = '' then raise exception 'Falta la dirección'; end if;
+  if p_starts_at < now() then raise exception 'Elige una fecha futura'; end if;
+  if (select count(*) from clinic_appointments where requested_by = auth.uid() and status = 'solicitada') >= 3 then
+    raise exception 'Ya tienes horas esperando confirmación';
+  end if;
+  if has_schedule(p_clinic, p_place) then
+    v_vet := free_vet(p_clinic, p_place, p_starts_at);
+    if v_vet is null then raise exception 'Esa hora ya no está disponible. Elige otra.'; end if;
+  end if;
+  -- Misma mascota y mismo teléfono: se usa la ficha que ya existe.
+  select id into pid from clinic_patients
+  where clinic_id = p_clinic and pet_id is null and lower(name) = lower(m_name)
+    and right(regexp_replace(tutor_phone, '\D', '', 'g'), 9) = right(regexp_replace(t_phone, '\D', '', 'g'), 9)
+  limit 1;
+  if pid is null then
+    insert into clinic_patients (clinic_id, name, species, breed, tutor_name, tutor_phone, tutor_email, tutor_address, without_app)
+    values (p_clinic, m_name, left(coalesce(p_pet->>'species', ''), 20), left(coalesce(p_pet->>'breed', ''), 80),
+      t_name, t_phone, t_email, case when p_place = 'domicilio' then left(trim(p_address), 200) else '' end, true)
+    returning id into pid;
+  elsif p_place = 'domicilio' then
+    update clinic_patients set tutor_address = left(trim(p_address), 200) where id = pid;
+  end if;
+  insert into clinic_appointments (clinic_id, patient_id, patient_name, service, starts_at, status, place, address, notes, requested_by, vet_id)
+  values (p_clinic, pid, m_name, coalesce(nullif(p_service, ''), 'consulta'), p_starts_at, 'solicitada', p_place,
+    case when p_place = 'domicilio' then left(trim(p_address), 200) else '' end, left(coalesce(p_notes, ''), 300), auth.uid(), v_vet)
+  returning id into a_id;
+  insert into notifications (user_id, type, title, body, url)
+  select m.user_id, 'info', 'Nueva solicitud de hora 📅',
+    m_name || ' · ' || service_name(p_service) || case when p_place = 'domicilio' then ' a domicilio' else '' end
+      || ' · ' || cl_when(p_starts_at) || ' · sin app: confírmale por WhatsApp', '#/clinica/solicitudes'
+  from clinic_members m where m.clinic_id = p_clinic;
+  return a_id;
+end $$;
+grant execute on function public.guest_request_appointment(uuid, jsonb, jsonb, text, text, timestamptz, text, text) to authenticated;

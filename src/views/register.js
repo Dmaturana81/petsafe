@@ -1,6 +1,6 @@
 import { registerPet } from '../data.js';
 import { mountScanner } from '../scanner.js';
-import { esc, toast, go } from '../ui.js';
+import { esc, toast, go, afterSetup } from '../ui.js';
 import { SPECIES, breedOptions } from '../breeds.js';
 import { pendingTransfer, forget } from './receive.js';
 import { shouldOfferAccount } from './save-account.js';
@@ -100,6 +100,8 @@ export default async function register(el, _params, { user }) {
       }
     }
     toast(`¡${pet.name} quedó registrada! 🎉`, 'ok');
-    next('#/');
+    // Venía de la página de una clínica para pedir hora: vuelve ahí.
+    const back = afterSetup('');
+    back ? go(back) : next('#/');
   });
 }
