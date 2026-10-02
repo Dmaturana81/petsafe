@@ -3,8 +3,8 @@
 
 import { createAccount } from '../../data.js';
 import { mountEmailLogin } from '../../views/login-email.js';
-import { esc, toast } from '../../ui.js';
-import { createClinic, joinClinic, setActiveClinic } from '../data.js';
+import { esc, toast, getLocation } from '../../ui.js';
+import { createClinic, joinClinic, saveClinic, setActiveClinic } from '../data.js';
 
 export default function start(el, { session, refresh, pendingCode }) {
   const intro = `
@@ -65,6 +65,13 @@ export default function start(el, { session, refresh, pendingCode }) {
             <label>Teléfono<input name="phone" type="tel" placeholder="+56 2 2345 6789"></label>
             <label>Tu nombre<input name="memberName" required placeholder="Dra. Camila Rojas"></label>
             <label>Tu rol<select name="role"><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select></label>
+            <label class="ck-check"><input type="checkbox" name="onMap" checked> Aparecer en “Clínicas cercanas” de la app, para que los tutores te encuentren en una urgencia</label>
+            <div class="ck-map-pick" id="ck-map-pick">
+              <p class="small muted">Marca la clínica en el mapa (toca o arrastra la huella).</p>
+              <div class="ck-map" id="ck-map"></div>
+              <button type="button" class="link small" id="ck-here">📍 Estoy en la clínica: usar mi ubicación</button>
+            </div>
+            <label class="ck-check"><input type="checkbox" name="emergencies"> Atendemos urgencias</label>
             <button class="btn primary">Crear clínica</button>
           </form>
         </div>
@@ -83,7 +90,7 @@ export default function start(el, { session, refresh, pendingCode }) {
   const submit = (sel, fn) => el.querySelector(sel).addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
-    const btn = e.target.querySelector('button');
+    const btn = e.target.querySelector('button:not([type="button"])');
     btn.disabled = true;
     try {
       setActiveClinic(await fn(data));
@@ -94,6 +101,30 @@ export default function start(el, { session, refresh, pendingCode }) {
       btn.disabled = false;
     }
   });
-  submit('#ck-create', (d) => createClinic({ ...d, name: d.name.trim(), memberName: d.memberName.trim() }));
+  // Ubicación para aparecer en "Clínicas cercanas": se pregunta al crearla.
+  let point = null;
+  const pick = el.querySelector('#ck-map-pick');
+  const onMap = el.querySelector('[name="onMap"]');
+  import('../../map.js').then(({ pickPoint }) => {
+    const picker = pickPoint(el.querySelector('#ck-map'), null, (p) => { point = p; });
+    onMap.addEventListener('change', () => {
+      pick.hidden = !onMap.checked;
+      if (onMap.checked) picker.map.invalidateSize();
+    });
+    el.querySelector('#ck-here').addEventListener('click', async () => {
+      const loc = await getLocation();
+      loc ? picker.set(loc) : toast('No pudimos obtener tu ubicación', 'bad');
+    });
+  });
+
+  submit('#ck-create', async (d) => {
+    if (d.onMap && !point) throw new Error('Marca la clínica en el mapa, o quita la opción de aparecer en Clínicas cercanas.');
+    const c = { name: d.name.trim(), address: d.address, phone: d.phone };
+    const id = await createClinic({ ...c, memberName: d.memberName.trim(), role: d.role });
+    if (d.onMap || d.emergencies) {
+      await saveClinic({ id, ...c, onMap: Boolean(d.onMap), emergencies: Boolean(d.emergencies), lat: point?.lat ?? null, lng: point?.lng ?? null });
+    }
+    return id;
+  });
   submit('#ck-join', (d) => joinClinic(d.code.trim().toUpperCase(), d.memberName.trim()));
 }
