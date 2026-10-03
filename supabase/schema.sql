@@ -109,6 +109,17 @@ alter table public.found_reports add column if not exists match_kind text;
 alter table public.found_reports add column if not exists match_score real;
 alter table public.found_reports add column if not exists own_score real;
 
+-- Desde dónde llegó el aviso: '' = la app, 'placa' = QR de la placa del collar
+-- (página #/placa, sin cuenta). Para saber cuántos probaron Kiltrazo por la placa.
+alter table public.found_reports add column if not exists source text not null default '';
+
+-- Visitas a la página de la placa (una por dispositivo). Sin datos personales.
+create table if not exists public.tag_visits (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now()
+);
+alter table public.tag_visits enable row level security;
+
 create table if not exists public.found_samples (
   id bigint generated always as identity primary key,
   found_id uuid not null references public.found_reports on delete cascade,
@@ -323,6 +334,7 @@ revoke execute on function public.found_scores(uuid) from public, anon, authenti
 -- Versiones anteriores, sin tipo ni raza.
 drop function if exists public.register_pet(text, text, text, text, text, jsonb);
 drop function if exists public.report_found(text, jsonb, double precision, double precision, text, text);
+drop function if exists public.report_found(text, jsonb, double precision, double precision, text, text, text);
 
 create or replace function public.register_pet(
   p_name text, p_owner_name text, p_diseases text, p_vaccines text, p_photo text, p_bio jsonb,
@@ -345,7 +357,7 @@ end $$;
 -- cuidados (vacunas y enfermedades), nunca datos del dueño.
 create or replace function public.report_found(
   p_photo text, p_bio jsonb, p_lat double precision, p_lng double precision, p_name text, p_phone text,
-  p_species text default ''
+  p_species text default '', p_source text default ''
 ) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
 declare
@@ -354,8 +366,9 @@ declare
 begin
   if auth.uid() is null then raise exception 'Sin sesión'; end if;
 
-  insert into found_reports (finder_id, finder_name, finder_phone, photo, lat, lng, species)
-  values (auth.uid(), p_name, p_phone, p_photo, p_lat, p_lng, coalesce(p_species, '')) returning id into r_id;
+  insert into found_reports (finder_id, finder_name, finder_phone, photo, lat, lng, species, source)
+  values (auth.uid(), coalesce(p_name, ''), p_phone, p_photo, p_lat, p_lng, coalesce(p_species, ''),
+          case when p_source = 'placa' then 'placa' else '' end) returning id into r_id;
   insert into found_samples (found_id, kind, dino, mobilenet, basic)
   select r_id, s.kind, s.dino, s.mobilenet, s.basic from bio_samples(p_bio) s;
 
@@ -416,6 +429,29 @@ begin
   values (pet.owner_id, 'match', '¿Encontraron a ' || pet.name || '? 🐾',
           'Alguien cree que la encontró. Toca para ver su foto, dónde está y contactarle.', '#/encontrada/' || p_found);
   return jsonb_build_object('diseases', pet.diseases, 'vaccines', pet.vaccines);
+end $$;
+
+-- Placa del collar: se cuenta cada dispositivo que abre su QR (la app lo
+-- llama una sola vez por dispositivo).
+create or replace function public.log_tag_visit() returns void
+language sql security definer set search_path = public as $$
+  insert into tag_visits default values;
+$$;
+grant execute on function public.log_tag_visit() to anon, authenticated;
+
+-- Para el administrador: cuántos abrieron el QR de la placa, cuántos
+-- escanearon una mascota desde ahí y en cuántos se encontró a su dueño.
+create or replace function public.tag_stats() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Solo el administrador'; end if;
+  return jsonb_build_object(
+    'visits', (select count(*) from tag_visits),
+    'reports', (select count(*) from found_reports where source = 'placa'),
+    'matched', (select count(*) from found_reports where source = 'placa' and pet_id is not null),
+    'months', coalesce((select jsonb_agg(m order by m.month desc) from (
+      select to_char(date_trunc('month', created_at at time zone 'America/Santiago'), 'YYYY-MM') as month, count(*) as visits
+      from tag_visits group by 1) m), '[]'::jsonb));
 end $$;
 
 -- Distancia en km entre dos puntos (fórmula del haversine).

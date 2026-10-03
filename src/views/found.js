@@ -1,4 +1,4 @@
-import { reportFound, confirmFound, CLOUD } from '../data.js';
+import { reportFound, confirmFound, logTagVisit, CLOUD } from '../data.js';
 import { mountScanner } from '../scanner.js';
 import { pickPoint } from '../map.js';
 import { esc, getLocation, timeAgo, toast } from '../ui.js';
@@ -8,13 +8,28 @@ import { describe } from '../breeds.js';
 // A quien la encontró solo se le muestran los cuidados (vacunas y
 // enfermedades). Ningún dato del dueño, para evitar pedidos de recompensa u
 // otros usos malintencionados: solo el dueño puede iniciar el contacto.
-export default async function found(el, _params, { user }) {
+//
+// Con { placa: true } es la página del QR de la placa del collar (#/placa):
+// funciona sin cuenta ni perfil y solo pide un teléfono de contacto.
+export default async function found(el, { placa = false } = {}, { user }) {
+  if (placa) countVisit();
   el.innerHTML = `
+    ${placa ? `
+    <header class="fd-top tag-top"><a href="#/kiltrazo" class="fd-brand"><img src="brand/kiltrazo.svg" alt="Kiltrazo"></a></header>
+    <div class="card">
+      <span class="ld-pill">🐾 Gracias por ayudar</span>
+      <h1>Escanea su cara para que vuelva a casa</h1>
+      <p>Filma la carita de la mascota moviendo el celular despacio; la app toma sola las capturas. Si está registrada en Kiltrazo, le avisamos a su dueño al instante. <strong>No necesitas crear cuenta.</strong></p>
+      <div id="scanner"></div>
+    </div>
+    <a class="card tag-only" href="#/kiltrazo">
+      <span>🏷️</span><span><strong>¿Solo encontraste la placa?</strong><small>Conoce Kiltrazo: registra gratis a tu mascota con su cara.</small></span>
+    </a>` : `
     <div class="card">
       <h1>Encontré una mascota</h1>
       <p>Escanéala igual que al registrar una mascota: filma su cara moviendo el celular despacio (la app toma sola 5 capturas) y, si se deja, acerca el celular a su nariz. Más capturas = más fácil reconocerla. Si está registrada, le avisamos a su dueño de inmediato.</p>
       <div id="scanner"></div>
-    </div>
+    </div>`}
     <div class="card" id="details" hidden>
       <p class="scan-ok">✅ ¡Escaneo listo! Ahora marca dónde está y envía el aviso.</p>
       <h2>¿Dónde está?</h2>
@@ -26,9 +41,9 @@ export default async function found(el, _params, { user }) {
           <option value="perro">Un perro</option>
           <option value="gato">Un gato</option>
         </select></label>
-        <label>Tu nombre<input name="finderName" required value="${esc(user.name)}"></label>
-        <label>Tu teléfono (WhatsApp)<input name="finderPhone" type="tel" required value="${esc(user.phone)}"></label>
-        <p class="muted small">Solo el dueño verá tu nombre y teléfono para contactarte.</p>
+        ${placa ? '' : `<label>Tu nombre<input name="finderName" required value="${esc(user?.name)}"></label>`}
+        <label>Tu ${placa ? 'WhatsApp o teléfono' : 'teléfono (WhatsApp)'}<input name="finderPhone" type="tel" required placeholder="9 1234 5678" value="${esc(user?.phone)}"></label>
+        <p class="muted small">Solo el dueño verá ${placa ? 'tu número' : 'tu nombre y teléfono'} para contactarte.</p>
         <button class="btn primary big">Enviar aviso</button>
       </form>
     </div>
@@ -71,8 +86,9 @@ export default async function found(el, _params, { user }) {
       lat: point.lat,
       lng: point.lng,
       species: f.get('species'),
-      finderName: f.get('finderName').trim(),
+      finderName: (f.get('finderName') || '').trim(),
       finderPhone: f.get('finderPhone').trim(),
+      source: placa ? 'placa' : '',
       });
     } catch (err) {
       btn.disabled = false;
@@ -83,6 +99,17 @@ export default async function found(el, _params, { user }) {
     const { care, compared, ownMatch, report, suggestions = [] } = res;
     el.querySelector('#details').hidden = true;
     el.querySelector('#scanner').closest('.card').hidden = true;
+    el.querySelector('.tag-only')?.remove();
+    // Desde la placa no hay "inicio" al que volver: se invita a conocer Kiltrazo.
+    const end = placa
+      ? `<div class="card center tag-next">
+          <div class="empty-emoji">🐶</div>
+          <h2>Ahora escanea a tus mascotas</h2>
+          <p>Así de fácil funciona Kiltrazo. Registra gratis a tu perro o gato con su cara: si algún día se pierde, su cara lo trae de vuelta.</p>
+          <a class="btn primary big" href="#/perfil">Crear mi cuenta gratis</a>
+          <p class="small"><a href="#/kiltrazo">Conocer más de Kiltrazo</a></p>
+        </div>`
+      : '<a class="btn secondary" href="#/">Volver al inicio</a>';
     const result = el.querySelector('#result');
     const matched = (c) => `
         <div class="card center success-banner">
@@ -96,7 +123,7 @@ export default async function found(el, _params, { user }) {
           <h3>🩺 Enfermedades y cuidados</h3>
           <p>${esc(c.diseases) || 'Sin información'}</p>
         </div>
-        <a class="btn secondary" href="#/">Volver al inicio</a>`;
+        ${end}`;
     result.innerHTML = care
       ? matched(care)
       : `
@@ -106,7 +133,7 @@ export default async function found(el, _params, { user }) {
           <p>${suggestions.length
             ? 'No hay una coincidencia segura, pero estas mascotas perdidas se parecen. Si es una de ellas, tócala y le avisamos a su dueño.'
             : 'Por ahora no la encontramos registrada. Tu aviso queda activo: si su dueño la reporta como perdida, aunque sea después, le llegará tu contacto automáticamente.'}</p>
-          ${suggestions.length ? '' : diagnostic(compared, ownMatch, report.bestScore)}
+          ${suggestions.length || placa ? '' : diagnostic(compared, ownMatch, report.bestScore)}
         </div>
         ${suggestions.length ? `
           <div class="card">
@@ -118,7 +145,7 @@ export default async function found(el, _params, { user }) {
             </ul>
             <p class="muted small">Si ninguna es, no hagas nada: tu aviso queda guardado.</p>
           </div>` : ''}
-        <a class="btn secondary" href="#/">Volver al inicio</a>`;
+        ${end}`;
     result.querySelectorAll('[data-pet]').forEach((b) =>
       b.addEventListener('click', async () => {
         b.disabled = true;
@@ -146,4 +173,14 @@ function diagnostic(compared, ownMatch, bestScore) {
       : '<p class="note">En este navegador no hay mascotas de otros usuarios. Por ahora los registros se guardan solo en el dispositivo donde se hicieron.</p>';
   }
   return `<p class="note">Comparamos con ${compared} mascota${compared === 1 ? '' : 's'}. Parecido más alto: ${Math.round((bestScore || 0) * 100)}%.</p>`;
+}
+
+// Cuenta una visita a la página de la placa, una sola vez por dispositivo.
+function countVisit() {
+  const key = 'kiltrazo-placa-visita';
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, new Date().toISOString());
+  } catch { return; }
+  logTagVisit().catch((err) => console.warn('Visita de la placa sin contar', err));
 }
