@@ -300,8 +300,11 @@ export async function markRecovered(pet, story = '') {
 // ---------- Mascotas encontradas ----------
 
 export async function reportFound(_finder, { photo, biometric, lat, lng, species = '', finderName, finderPhone, source = '' }) {
+  // p_source solo desde la placa: así "Encontré" sigue funcionando aunque aún
+  // no se haya vuelto a correr schema.sql.
   const r = await run(sb().rpc('report_found', {
-    p_species: species, p_photo: photo, p_bio: biometric, p_lat: lat, p_lng: lng, p_name: finderName, p_phone: finderPhone, p_source: source,
+    p_species: species, p_photo: photo, p_bio: biometric, p_lat: lat, p_lng: lng, p_name: finderName, p_phone: finderPhone,
+    ...(source ? { p_source: source } : {}),
   }));
   return {
     report: { id: r.id, bestScore: r.best_score },
