@@ -1,7 +1,7 @@
 import {
   allPets, savePet, allFound, saveFound, deleteFound, listUsers, moveUserPets, adminDeleteUser, adminDeletePet, notify, notifyAll,
   latestSuccesses, deleteSuccess, commentsFor, deleteComment, addSuccess, markRecovered,
-  trainingPhotos, CLOUD, isAdmin, claimAdmin, adminExists, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
+  trainingPhotos, tagStats, CLOUD, isAdmin, claimAdmin, adminExists, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
 } from '../data.js';
 import { generateVapidKeys } from '../notify.js';
 import { mountEmailLogin } from './login-email.js';
@@ -94,7 +94,7 @@ function login(el, { refresh }) {
 // Qué tan bien reconoce la app: cómo terminó cada aviso de "encontré" y con
 // qué parecido, para ajustar el umbral con datos reales.
 async function recon(panel) {
-  const [pets, found] = await Promise.all([allPets(), allFound()]);
+  const [pets, found, tag] = await Promise.all([allPets(), allFound(), tagStats().catch(() => null)]);
   const petName = (id) => pets.find((p) => p.id === id)?.name || '?';
   const trainPets = pets.filter((p) => p.trainOk);
   const match = THRESHOLDS.dino, suggest = THRESHOLDS.dino - SUGGEST_MARGIN;
@@ -123,7 +123,21 @@ async function recon(panel) {
     <div class="score-row"><span>${label}</span><strong>${pct(v)}</strong></div>
     <div class="score-bar"><i class="mark suggest" style="left:${pos(suggest)}"></i><i class="mark match" style="left:${pos(match)}"></i><b class="${v >= match ? 'hi' : v >= suggest ? 'mid' : 'lo'}" style="width:${pos(v)}"></b></div>`);
 
+  const fromTag = all.filter((f) => f.source === 'placa');
   panel.innerHTML = `
+    ${tag ? `
+    <div class="card">
+      <h2>🏷️ Placa del collar</h2>
+      <p class="muted small">Personas que escanearon el QR de una placa (se cuenta una vez por celular) y avisos que enviaron sin crear cuenta.</p>
+      <div class="stat-grid">
+        <div class="stat"><strong>${tag.visits}</strong><small>Abrieron el QR</small></div>
+        <div class="stat mid"><strong>${tag.reports}</strong><small>Escanearon una mascota</small></div>
+        <div class="stat hi"><strong>${tag.matched}</strong><small>Encontraron a su dueño</small></div>
+      </div>
+      ${tag.months?.length ? `<p class="small">Visitas por mes: ${tag.months.map((m) => `${esc(m.month)}: <strong>${m.visits}</strong>`).join(' · ')}</p>` : ''}
+      ${fromTag.length ? '<button class="btn secondary" id="tag-csv">Descargar avisos de la placa (CSV)</button>' : ''}
+    </div>` : ''}
+
     <div class="card">
       <h2>Resumen (${list.length} avisos de "encontré")</h2>
       <p class="muted small">Sin contar tus pruebas con mascotas propias.</p>
@@ -162,7 +176,7 @@ async function recon(panel) {
           <img src="${esc(f.photo)}" alt="">
           <div>
             <strong class="tone-${tone}">${text}</strong>
-            <small>${timeAgo(f.createdAt)} · ${esc(f.finderName)}</small>
+            <small>${timeAgo(f.createdAt)} · ${f.source === 'placa' ? '🏷️ desde la placa' : esc(f.finderName)}</small>
             ${bar('Parecido con la mascota ligada', f.matchScore)}
             ${f.petId ? '' : bar('Más parecida de otros dueños', f.bestScore)}
             ${bar('Parecido con tu propia mascota', f.ownScore)}
@@ -170,6 +184,21 @@ async function recon(panel) {
         </li>`;
       }).join('')}</ul>` : '<p class="muted">Todavía no hay escaneos de mascotas encontradas.</p>'}
     </div>`;
+
+  // Datos de la placa para analizar aparte (sin teléfonos): fecha, zona aproximada y resultado.
+  panel.querySelector('#tag-csv')?.addEventListener('click', () => {
+    const rows = [['fecha', 'lat_aprox', 'lng_aprox', 'tipo', 'resultado', 'parecido_max']]
+      .concat(fromTag.map((f) => [
+        f.createdAt, f.lat?.toFixed(2), f.lng?.toFixed(2), f.species || '',
+        !f.petId ? 'sin dueño' : f.matchKind === 'auto' ? 'dueño avisado' : f.matchKind === 'owner' ? 'reconocida por el dueño' : 'elegida por quien la encontró',
+        f.bestScore != null ? Math.round(f.bestScore * 100) + '%' : '',
+      ]));
+    const csv = rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
+    a.download = 'kiltrazo-placa.csv';
+    a.click();
+  });
 
   panel.querySelector('#train-zip')?.addEventListener('click', async (e) => {
     e.target.disabled = true;

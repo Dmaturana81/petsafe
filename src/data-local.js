@@ -209,10 +209,11 @@ export async function markRecovered(pet, story = '') {
  * mascota registrada, avisa al dueño. Al que la encontró solo se le devuelven
  * los cuidados (vacunas y enfermedades), nunca datos del dueño.
  */
-export async function reportFound(finder, { photo, biometric, lat, lng, species = '', finderName, finderPhone }) {
+export async function reportFound(finder, { photo, biometric, lat, lng, species = '', finderName, finderPhone, source = '' }) {
   const report = {
     id: uid('f_'),
-    finderId: finder.id,
+    finderId: finder?.id || null,
+    source,
     finderName,
     finderPhone,
     photo,
@@ -232,7 +233,7 @@ export async function reportFound(finder, { photo, biometric, lat, lng, species 
     if (!sameSpecies(pet.species, species)) continue;
     const { score, match, sure, suggest } = compare(pet.biometric, biometric);
     // Una mascota propia no se "encuentra"; se informa para no confundir.
-    if (pet.ownerId === finder.id) {
+    if (finder && pet.ownerId === finder.id) {
       if (match) ownMatch = pet.name;
       report.ownScore = Math.max(report.ownScore || 0, score);
       continue;
@@ -263,7 +264,7 @@ const pick = ({ id, name, photo, species, breed, lostAt }) => ({ id, name, photo
 /** Quien encontró la mascota elige una sugerida: se avisa al dueño. Devuelve sus cuidados. */
 export async function confirmFound(finder, reportId, petId) {
   const [report, pet] = await Promise.all([db.get('found', reportId), db.get('pets', petId)]);
-  if (!report || !pet || report.finderId !== finder.id || report.petId || pet.status !== 'lost') throw new Error('Aviso no disponible');
+  if (!report || !pet || report.finderId !== (finder?.id || null) || report.petId || pet.status !== 'lost') throw new Error('Aviso no disponible');
   Object.assign(report, { petId: pet.id, matchKind: 'finder', matchScore: compare(pet.biometric, report.biometric).score });
   await db.put('found', report);
   await notify(pet.ownerId, {
@@ -426,3 +427,20 @@ export const loginEmail = async () => '';
 export const finishEmailLink = async () => null;
 export const sessionToken = async () => '';
 export const adoptSession = async () => false;
+
+// ---------- Placa del collar ----------
+
+export async function logTagVisit() {
+  const meta = (await db.get('meta', 'tagVisits')) || { id: 'tagVisits', count: 0 };
+  await db.put('meta', { ...meta, count: meta.count + 1 });
+}
+
+export async function tagStats() {
+  const found = (await db.all('found')).filter((f) => f.source === 'placa');
+  return {
+    visits: (await db.get('meta', 'tagVisits'))?.count || 0,
+    reports: found.length,
+    matched: found.filter((f) => f.petId).length,
+    months: [],
+  };
+}

@@ -299,9 +299,12 @@ export async function markRecovered(pet, story = '') {
 
 // ---------- Mascotas encontradas ----------
 
-export async function reportFound(_finder, { photo, biometric, lat, lng, species = '', finderName, finderPhone }) {
+export async function reportFound(_finder, { photo, biometric, lat, lng, species = '', finderName, finderPhone, source = '' }) {
+  // p_source solo desde la placa: así "Encontré" sigue funcionando aunque aún
+  // no se haya vuelto a correr schema.sql.
   const r = await run(sb().rpc('report_found', {
     p_species: species, p_photo: photo, p_bio: biometric, p_lat: lat, p_lng: lng, p_name: finderName, p_phone: finderPhone,
+    ...(source ? { p_source: source } : {}),
   }));
   return {
     report: { id: r.id, bestScore: r.best_score },
@@ -310,6 +313,18 @@ export async function reportFound(_finder, { photo, biometric, lat, lng, species
     care: r.matched ? { diseases: r.diseases, vaccines: r.vaccines } : null,
     suggestions: rows(r.suggestions),
   };
+}
+
+// ---------- Placa del collar ----------
+
+export async function logTagVisit() {
+  await session();
+  return run(sb().rpc('log_tag_visit'));
+}
+
+/** Para el administrador: visitas al QR de la placa y avisos enviados desde ahí. */
+export async function tagStats() {
+  return run(sb().rpc('tag_stats'));
 }
 
 /** Quien encontró la mascota elige una sugerida: se avisa al dueño. Devuelve sus cuidados. */

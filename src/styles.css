@@ -806,3 +806,11 @@ body.web-mode .cookie-bar, body.admin-mode .cookie-bar, body.clinic-mode .cookie
   .cookie-bar { flex-direction: row; align-items: center; max-width: 860px; }
   .cookie-btns .btn { flex: none; }
 }
+
+/* Página del QR de la placa del collar (#/placa): sin menú, centrada. */
+body.web-mode .tag-top { justify-content: center; margin-bottom: 12px; }
+body.web-mode:has(.tag-top) #app { max-width: 560px; padding: 16px 16px 40px; }
+.tag-top .fd-brand img { height: 40px; }
+a.card.tag-only { display: flex; gap: 12px; align-items: center; text-decoration: none; color: inherit; }
+.tag-only > span:first-child { font-size: 1.8rem; }
+.tag-only small { display: block; color: var(--muted, #8a6a55); margin-top: 2px; }
