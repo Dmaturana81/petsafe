@@ -4,7 +4,7 @@ import { currentUser, myNotifications, deliverPending, enablePush, finishEmailLi
 import { esc, isComplete } from './ui.js';
 import { unlockAudio, startAlarm, checkAlarms } from './alarm.js';
 import { refreshArea } from './nearby.js';
-import './install.js';
+import { installPopup } from './install.js';
 import { setPage } from './seo.js';
 import { initAnalytics, pageView } from './analytics.js';
 
@@ -183,6 +183,10 @@ async function render() {
     viewEl.innerHTML = oops(err);
   }
   pageView(hash);
+  // Usuario nuevo en el navegador del celular: una vez, cómo instalar la app.
+  if (view === landing || view === home) {
+    setTimeout(() => { if ((location.hash || START) === hash) installPopup(user); }, 800);
+  }
   await updateBadge(user);
 }
 

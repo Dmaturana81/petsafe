@@ -628,6 +628,10 @@ body.web-mode .tabbar, body.web-mode .topbar { display: none; }
 .install-card h2 { margin: 0 0 4px; }
 .install-card .btn { width: 100%; margin: 8px 0 4px; }
 .install-steps { margin: 8px 0 0; padding-left: 22px; display: grid; gap: 6px; }
+.install-sheet .tips-body { gap: 10px; }
+.install-sheet .install-logo { width: 64px; height: 64px; border-radius: 16px; }
+.install-sheet .install-steps { font-size: 1.05rem; gap: 10px; }
+.install-sheet .btn { width: 100%; }
 .install-ico { display: inline-block; border: 1.5px solid currentColor; border-radius: 4px; padding: 0 4px; font-size: 0.8em; }
 
 /* Especialidades */
