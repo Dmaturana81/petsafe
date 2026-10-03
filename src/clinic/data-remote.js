@@ -125,6 +125,10 @@ export async function petHealth(petId) {
   return { clinics: r.clinics.map(camel), vaccines: r.vaccines.map(camel), appointments: r.appointments.map(camel) };
 }
 
+export async function removePatient(patientId) {
+  return run(sb().rpc('remove_clinic_patient', { p_patient: patientId }));
+}
+
 export async function unlinkPet(petId, clinicId) {
   return run(sb().rpc('unlink_pet', { p_pet: petId, p_clinic: clinicId }));
 }

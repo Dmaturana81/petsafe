@@ -1,4 +1,4 @@
-import { saveUser, listUsers, switchUser, myPets, removeMyPet, savePet, contactAdmin, enablePush, loginEmail, createAccount, setPassword, signOut, CLOUD } from '../data.js';
+import { saveUser, listUsers, switchUser, myPets, removeMyPet, createPetGift, savePet, contactAdmin, enablePush, loginEmail, createAccount, setPassword, signOut, CLOUD } from '../data.js';
 import { mountEmailLogin } from './login-email.js';
 import { askPermission, notificationsSupported } from '../notify.js';
 import { esc, toast, go, isComplete, afterSetup } from '../ui.js';
@@ -93,8 +93,24 @@ export default async function profile(el, _params, { user, refresh }) {
               <label>Vacunas<textarea name="vaccines" rows="2">${esc(p.vaccines)}</textarea></label>
               <button class="btn primary">Guardar cambios</button>
               <button type="button" class="btn ghost" data-cancel>Cancelar</button>
-              <button type="button" class="btn small danger" data-delpet="${esc(p.id)}">Eliminar a ${esc(p.name)}</button>
             </form>
+            <div class="pet-bye" hidden>
+              <p class="small muted">¿${esc(p.name)} ya no está contigo?</p>
+              <span class="row-actions">
+                <button type="button" class="btn small ghost" data-gift>🎁 Se la di a otra persona</button>
+                <button type="button" class="link small danger" data-delpet>Eliminar a ${esc(p.name)}</button>
+              </span>
+              <div class="gift-out" hidden></div>
+              <form class="form del-box" hidden>
+                <p><b>¿Eliminar a ${esc(p.name)} para siempre?</b> Se borran sus datos, fotos y su cara registrada, y no se puede deshacer.</p>
+                <p class="small">Si se la diste a alguien, mejor usa "Se la di a otra persona": así quedará a su nombre y la podremos encontrar si se pierde.</p>
+                <label>Para confirmar, escribe su nombre<input name="confirm" autocomplete="off" placeholder="${esc(p.name)}"></label>
+                <span class="row-actions">
+                  <button type="button" class="btn small ghost" data-delno>Cancelar</button>
+                  <button class="btn small danger" disabled>Eliminar para siempre</button>
+                </span>
+              </form>
+            </div>
           </li>`).join('')}</ul>`
         : '<p>Aún no registras mascotas.</p>'}
         <a class="btn secondary" href="#/registrar">Registrar mascota</a>
@@ -213,10 +229,49 @@ export default async function profile(el, _params, { user, refresh }) {
   el.querySelectorAll('.my-pets li').forEach((li) => {
     const pet = pets.find((p) => p.id === li.dataset.pet);
     const form = li.querySelector('.pet-edit');
+    const bye = li.querySelector('.pet-bye');
     const toggle = (open) => {
       form.hidden = !open;
+      bye.hidden = !open;
       li.querySelector('[data-editpet]').hidden = open;
     };
+    // Pasársela a otra persona: enlace de un uso por WhatsApp o QR.
+    li.querySelector('[data-gift]').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        const code = await createPetGift(pet.id);
+        const url = `${location.origin}${location.pathname}#/regalo/${code}`;
+        const msg = `Hola, te paso a ${pet.name} en Kiltrazo para que quede a tu nombre (con su cara ya registrada, por si algún día se pierde): ${url}`;
+        const QR = (await import('qrcode')).default;
+        const out = li.querySelector('.gift-out');
+        out.hidden = false;
+        out.innerHTML = `
+          <p class="small">Envíale este enlace a la persona que tiene a ${esc(pet.name)}, o que escanee el QR con su celular. Al recibirla, ${esc(pet.name)} sale de tu cuenta y pasa a la suya. Sirve una vez y dura 7 días.</p>
+          <img class="gift-qr" alt="QR para recibir a ${esc(pet.name)}" src="${await QR.toDataURL(url, { margin: 1, width: 400, color: { dark: '#4a3428' } })}">
+          <span class="row-actions">
+            <a class="btn small whatsapp" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+            <button type="button" class="btn small ghost" data-copy>Copiar enlace</button>
+          </span>`;
+        out.querySelector('[data-copy]').addEventListener('click', () => navigator.clipboard?.writeText(url).then(() => toast('Enlace copiado', 'ok')));
+        e.target.hidden = true;
+      } catch (err) {
+        toast(err.message, 'bad');
+        e.target.disabled = false;
+      }
+    });
+    // Eliminar: se confirma escribiendo su nombre.
+    const del = li.querySelector('.del-box');
+    li.querySelector('[data-delpet]').addEventListener('click', () => { del.hidden = false; del.confirm.focus(); });
+    del.querySelector('[data-delno]').addEventListener('click', () => { del.reset(); del.hidden = true; });
+    const same = () => del.confirm.value.trim().toLowerCase() === pet.name.trim().toLowerCase();
+    del.confirm.addEventListener('input', () => { del.querySelector('.btn.danger').disabled = !same(); });
+    del.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!same()) return;
+      await removeMyPet(user, pet.id);
+      toast(`${pet.name} fue eliminada`);
+      refresh();
+    });
     li.querySelector('[data-editpet]').addEventListener('click', () => toggle(true));
     // Kiltrazo Clínica: código para la veterinaria y carnet de vacunas (se carga al abrir).
     li.querySelector('[data-vet]').addEventListener('click', async () => {
@@ -254,16 +309,6 @@ export default async function profile(el, _params, { user, refresh }) {
       }
     });
   });
-
-  el.querySelectorAll('[data-delpet]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      const pet = pets.find((p) => p.id === b.dataset.delpet);
-      if (!confirm(`¿Eliminar a ${pet.name}? Se borrarán sus datos y su biometría, y no se podrá deshacer.`)) return;
-      await removeMyPet(user, pet.id);
-      toast(`${pet.name} fue eliminada`);
-      refresh();
-    }),
-  );
 
   el.querySelector('#contact')?.addEventListener('submit', async (e) => {
     e.preventDefault();

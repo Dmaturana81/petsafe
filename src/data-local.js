@@ -95,6 +95,42 @@ export async function adminDeleteUser(userId) {
 }
 
 /** El dueño elimina su mascota: se borra su biometría y se desligan los avisos. */
+// Pasar una mascota a otra persona: el enlace se guarda en "meta" (gift:CÓDIGO).
+const WEEK = 7 * 24 * 3600000;
+export async function createPetGift(petId) {
+  const code = Math.random().toString(36).slice(2, 10).toUpperCase();
+  const me = await currentUser();
+  await db.put('meta', { id: `gift:${code}`, petId, fromUser: me.id, createdAt: now() });
+  return code;
+}
+
+async function giftOf(code) {
+  const g = await db.get('meta', `gift:${String(code).trim().toUpperCase()}`);
+  const pet = g && await db.get('pets', g.petId);
+  if (!g || !pet || pet.ownerId !== g.fromUser || Date.now() - Date.parse(g.createdAt) > WEEK) return null;
+  return { g, pet };
+}
+
+export async function petGiftInfo(code) {
+  const it = await giftOf(code);
+  if (!it) return null;
+  const from = await db.get('users', it.g.fromUser);
+  const me = await currentUser();
+  return { name: it.pet.name, photo: it.pet.photo, species: it.pet.species, breed: it.pet.breed,
+    from: from?.firstName || (from?.name || '').split(' ')[0] || '', mine: it.pet.ownerId === me?.id };
+}
+
+export async function acceptPetGift(code) {
+  const me = await currentUser();
+  if (!me) throw new Error('Primero completa tu perfil');
+  const it = await giftOf(code);
+  if (!it) throw new Error('Este enlace ya no sirve. Pide uno nuevo.');
+  if (it.pet.ownerId === me.id) throw new Error('Esta mascota ya es tuya');
+  await db.put('pets', { ...it.pet, ownerId: me.id, ownerName: `${me.firstName || me.name} ${me.lastName || ''}`.trim() });
+  await db.delete('meta', it.g.id);
+  return it.pet.id;
+}
+
 export async function removeMyPet(user, petId) {
   const pet = await db.get('pets', petId);
   if (!pet || pet.ownerId !== user.id) return false;

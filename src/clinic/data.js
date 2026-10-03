@@ -29,6 +29,9 @@ export function setActiveClinic(id) {
 export const listPatients = (clinicId) => B.list('clinic_patients', { clinicId }, { order: 'name' });
 export const getPatient = (id) => B.get('clinic_patients', id);
 export const savePatient = ({ id, ...p }) => (id ? B.update('clinic_patients', id, p) : B.insert('clinic_patients', p));
+// Quitar de la lista de la clínica (no borra la mascota de Kiltrazo) y devolverlo.
+export const removePatient = (id) => B.removePatient(id);
+export const restorePatient = (id) => B.update('clinic_patients', id, { removedAt: null });
 
 // ---------- Consultas ----------
 

@@ -30,6 +30,7 @@ import appointment from './views/appointment.js';
 import clinicPage from './views/clinic-page.js';
 import finder from './views/finder.js';
 import landing from './views/landing.js';
+import gift, { pendingGift, GIFT_KEY } from './views/gift.js';
 import moved from './views/moved.js';
 import { leaveIfMoved, arriveAfterMove } from './move.js';
 
@@ -84,6 +85,7 @@ const routes = [
   ['privacidad', privacy],
   ['terminos', terms],
   ['recibir/:code', receive],
+  ['regalo/:code', gift],
   ['clinicas', clinicsMap],
   ['hora/:id', appointment],
   ['veterinarios', finder],
@@ -142,6 +144,15 @@ async function render() {
   // Ficha enviada por la veterinaria a alguien sin perfil: se retoma al terminarlo.
   if (view === receive && !isComplete(user)) {
     try { localStorage.setItem(TRANSFER_KEY, JSON.stringify({ code: params.code, waiting: true })); } catch { /* sin almacenamiento */ }
+  }
+  // Mascota que otra persona le pasa: se retoma al completar el perfil.
+  if (view === gift && !isComplete(user)) {
+    try { localStorage.setItem(GIFT_KEY, params.code); } catch { /* sin almacenamiento */ }
+  }
+  const giftLater = pendingGift();
+  if (giftLater && isComplete(user) && view === home) {
+    location.hash = `#/regalo/${giftLater}`;
+    return;
   }
   const later = pendingTransfer();
   if (later?.waiting && isComplete(user) && view === home) {

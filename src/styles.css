@@ -814,3 +814,15 @@ body.web-mode:has(.tag-top) #app { max-width: 560px; padding: 16px 16px 40px; }
 a.card.tag-only { display: flex; gap: 12px; align-items: center; text-decoration: none; color: inherit; }
 .tag-only > span:first-child { font-size: 1.8rem; }
 .tag-only small { display: block; color: var(--muted, #8a6a55); margin-top: 2px; }
+
+/* Mascota que ya no está contigo: pasarla a otra persona o eliminarla */
+.pet-bye { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 10px; }
+.pet-bye > p { margin: 0 0 6px; }
+.pet-bye .row-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.gift-out { margin-top: 10px; background: var(--cream); border-radius: 16px; padding: 12px; }
+.gift-out p { margin: 0 0 8px; }
+.my-pets .gift-qr, .gift-qr { width: 180px; height: 180px; display: block; margin: 0 auto 10px; border-radius: 12px; }
+.del-box { margin-top: 10px; background: #fdece8; border-radius: 16px; padding: 12px; }
+.del-box p { margin: 0 0 8px; }
+.del-box .btn.danger { background: #c4492f; color: #fff; }
+.del-box .btn.danger:disabled { opacity: .45; }
