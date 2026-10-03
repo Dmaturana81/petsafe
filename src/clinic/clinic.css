@@ -326,3 +326,18 @@ body.clinic-mode #view { padding: 0; display: block; }
 .ck-doc-name.ok { color: #2e7d32; font-weight: 600; }
 .ck-review a { color: inherit; }
 .ck-review-card { max-width: 560px; }
+
+/* Quitar un paciente de la clínica */
+.ck-danger { margin-top: 14px; }
+.ck-danger > .link { padding: 0; }
+.ck-danger h3 { margin: 0 0 6px; }
+.ck-danger ul { margin: 0 0 12px; padding-left: 18px; display: grid; gap: 4px; }
+.ck-danger .ck-row-end { display: flex; gap: 8px; justify-content: flex-end; }
+.ck-danger .btn.danger { background: #c4492f; color: #fff; }
+.ck-removed { margin-top: 16px; }
+.ck-removed summary { cursor: pointer; color: var(--muted); font-weight: 700; }
+.ck-removed .ck-list { margin-top: 8px; }
+.ck-removed .ck-prow { opacity: .85; }
+.ck-removed[open] > summary { display: block; }
+.ck-removed > summary::before { content: '▸ '; }
+.ck-removed[open] > summary::before { content: '▾ '; }

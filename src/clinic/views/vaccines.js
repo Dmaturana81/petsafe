@@ -5,7 +5,8 @@ import { dueVaccines, listPatients, today } from '../data.js';
 import { fmtDate, dueTone, dueLabel, KINDS, waLink } from '../ui.js';
 
 export default async function vaccines(el, _params, { clinic }) {
-  const [due, patients] = await Promise.all([dueVaccines(clinic.id, 30), listPatients(clinic.id)]);
+  const [all, patients] = await Promise.all([dueVaccines(clinic.id, 30), listPatients(clinic.id)]);
+  const due = all.filter((v) => !patients.find((p) => p.id === v.patientId)?.removedAt);
   const t = today();
   const byId = Object.fromEntries(patients.map((p) => [p.id, p]));
 

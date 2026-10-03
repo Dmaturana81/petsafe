@@ -254,6 +254,19 @@ export async function removeMyPet(_user, petId) {
   return true;
 }
 
+// Pasar una mascota a otra persona (se la regaló): enlace de un uso, 7 días.
+export async function createPetGift(petId) {
+  return run(sb().rpc('create_pet_gift', { p_pet: petId }));
+}
+
+export async function petGiftInfo(code) {
+  return camel(await run(sb().rpc('pet_gift_info', { p_code: code })));
+}
+
+export async function acceptPetGift(code) {
+  return run(sb().rpc('accept_pet_gift', { p_code: code }));
+}
+
 // El administrador elimina una mascota (las reglas RLS lo permiten).
 export const adminDeletePet = (petId) => removeMyPet(null, petId);
 

@@ -62,7 +62,13 @@ const DEFAULTS = {
 export async function insert(table, row) {
   const me = (await app.currentUser())?.id;
   const extra = { clinic_visits: { vetId: me }, clinic_files: { uploadedBy: me } }[table] || {};
-  return put(table, { ...DEFAULTS[table]?.(), ...extra, ...row, id: uuid(), createdAt: now() });
+  const saved = await put(table, { ...DEFAULTS[table]?.(), ...extra, ...row, id: uuid(), createdAt: now() });
+  // Igual que en la base: si un paciente quitado vuelve a pedir hora, reaparece.
+  if (table === 'clinic_appointments' && saved.patientId) {
+    const cp = await get('clinic_patients', saved.patientId);
+    if (cp?.removedAt) await update('clinic_patients', cp.id, { removedAt: null });
+  }
+  return saved;
 }
 
 export async function update(table, id, patch) {
@@ -196,6 +202,15 @@ async function patientFromPet(clinicId, pet) {
   })).id;
 }
 
+export async function removePatient(patientId) {
+  await update('clinic_patients', patientId, { removedAt: now() });
+  const from = new Date(Date.now() - 3 * 3600000).toISOString();
+  for (const a of await list('clinic_appointments', { patientId })) {
+    if (a.startsAt >= from && ['solicitada', 'agendada', 'en_camino'].includes(a.status)) await update('clinic_appointments', a.id, { status: 'cancelada' });
+  }
+  return true;
+}
+
 export async function unlinkPet(petId, clinicId) {
   for (const p of await list('clinic_patients', { petId, clinicId })) await update('clinic_patients', p.id, { petId: null, tutorUser: null });
   return true;
@@ -207,7 +222,7 @@ export async function petHealth(petId) {
   const clinics = await all('clinics');
   const name = (id) => clinics.find((c) => c.id === id)?.name || '';
   return {
-    clinics: clinics.filter((c) => patients.some((p) => p.clinicId === c.id)),
+    clinics: clinics.filter((c) => patients.some((p) => p.clinicId === c.id && !p.removedAt)),
     vaccines: (await all('clinic_vaccines')).filter((v) => ids.has(v.patientId))
       .sort((a, b) => b.appliedOn.localeCompare(a.appliedOn))
       .map((v) => ({ kind: v.kind, name: v.name, appliedOn: v.appliedOn, nextDue: v.nextDue, clinic: name(v.clinicId) })),

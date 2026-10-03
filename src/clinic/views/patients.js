@@ -3,11 +3,13 @@
 
 import { esc, toast, go } from '../../ui.js';
 import { SPECIES, breedOptions } from '../../breeds.js';
-import { listPatients, getPatient, savePatient, saveAppointment, linkPet } from '../data.js';
+import { listPatients, getPatient, savePatient, saveAppointment, linkPet, removePatient, restorePatient } from '../data.js';
 import { avatar, speciesLine, age } from '../ui.js';
 
 export default async function patients(el, _params, { clinic }) {
-  const list = await listPatients(clinic.id);
+  const everyone = await listPatients(clinic.id);
+  const list = everyone.filter((p) => !p.removedAt);
+  const removed = everyone.filter((p) => p.removedAt);
   el.innerHTML = `
     <header class="ck-head">
       <div><h1>Pacientes</h1><p class="ck-sub">${list.length} ${list.length === 1 ? 'paciente' : 'pacientes'}</p></div>
@@ -17,7 +19,18 @@ export default async function patients(el, _params, { clinic }) {
       </div>
     </header>
     <input class="ck-search" type="search" placeholder="Buscar por nombre, tutor, teléfono o chip…" aria-label="Buscar paciente" id="ck-q">
-    <div class="card ck-list" id="ck-plist"></div>`;
+    <div class="card ck-list" id="ck-plist"></div>
+    ${removed.length ? `<details class="ck-removed">
+      <summary>Pacientes quitados (${removed.length})</summary>
+      <p class="small muted">Los quitaste de tu lista. Si vuelven a pedir hora, aparecen solos con su historial.</p>
+      <div class="card ck-list">${removed.map((p) => `
+        <div class="ck-prow">
+          ${avatar(p)}
+          <span class="ck-prow-main"><strong>${esc(p.name)}</strong><small>${esc(speciesLine(p))}</small></span>
+          <span class="ck-prow-tutor"><strong>${esc(p.tutorName)}</strong><small>${esc(p.tutorPhone)}</small></span>
+          <button type="button" class="btn small ghost" data-restore="${p.id}">Volver a agregar</button>
+        </div>`).join('')}</div>
+    </details>` : ''}`;
 
   const draw = (q = '') => {
     const t = q.trim().toLowerCase();
@@ -37,6 +50,17 @@ export default async function patients(el, _params, { clinic }) {
   };
   draw();
   el.querySelector('#ck-q').addEventListener('input', (e) => draw(e.target.value));
+  el.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      await restorePatient(b.dataset.restore);
+      toast('Paciente agregado de nuevo', 'ok');
+      go(`#/clinica/paciente/${b.dataset.restore}`);
+    } catch (err) {
+      toast(err.message, 'bad');
+      b.disabled = false;
+    }
+  }));
 }
 
 export async function patientForm(el, { id }, { clinic }) {
@@ -80,7 +104,37 @@ export async function patientForm(el, { id }, { clinic }) {
         <a class="btn ghost small" href="${id ? `#/clinica/paciente/${id}` : '#/clinica/pacientes'}">Cancelar</a>
         <button class="btn primary small">${id ? 'Guardar cambios' : 'Crear ficha'}</button>
       </div>
-    </form>`;
+    </form>
+    ${id && !p.removedAt ? `<div class="card ck-danger">
+      <button type="button" class="link danger" id="ck-remove">Quitar a ${v('name')} de mis pacientes</button>
+      <div id="ck-remove-box" hidden>
+        <h3>¿Quitar a ${v('name')} de tus pacientes?</h3>
+        <ul class="small">
+          <li>Deja de aparecer en tu lista de pacientes${p.petId ? ' y en "Mi veterinaria" del tutor' : ''}. Sus horas pendientes contigo se cancelan.</li>
+          <li>No se borra de Kiltrazo: ${p.petId ? 'la mascota sigue en la app de su tutor y otra clínica la puede atender.' : 'su ficha queda guardada.'}</li>
+          <li>Si vuelve a pedir hora contigo, reaparece con todo su historial.</li>
+        </ul>
+        <span class="ck-row-end">
+          <button type="button" class="btn ghost small" id="ck-remove-no">Cancelar</button>
+          <button type="button" class="btn danger small" id="ck-remove-yes">Sí, quitar</button>
+        </span>
+      </div>
+    </div>` : ''}`;
+
+  const box = el.querySelector('#ck-remove-box');
+  el.querySelector('#ck-remove')?.addEventListener('click', (e) => { e.target.hidden = true; box.hidden = false; box.scrollIntoView({ block: 'nearest' }); });
+  el.querySelector('#ck-remove-no')?.addEventListener('click', () => { box.hidden = true; el.querySelector('#ck-remove').hidden = false; });
+  el.querySelector('#ck-remove-yes')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      await removePatient(id);
+      toast(`${p.name} ya no está en tus pacientes`, 'ok');
+      go('#/clinica/pacientes');
+    } catch (err) {
+      toast(err.message, 'bad');
+      e.target.disabled = false;
+    }
+  });
 
   const form = el.querySelector('#ck-pform');
   form.species.addEventListener('change', () => { el.querySelector('#ck-breeds').innerHTML = breedOptions(form.species.value); });
@@ -142,6 +196,7 @@ export function linkForm(el, { code = '' }, { clinic }) {
     btn.disabled = true;
     try {
       const id = await linkPet(clinic.id, form.code.value);
+      await restorePatient(id);
       toast('¡Mascota vinculada!', 'ok');
       go(`#/clinica/paciente/${id}`);
     } catch (err) {

@@ -2159,3 +2159,120 @@ create trigger stamp_clinic_terms before update on public.clinics
 drop policy if exists "admin ve documentos de revisión" on storage.objects;
 create policy "admin ve documentos de revisión" on storage.objects for select using (
   bucket_id = 'clinica' and (storage.foldername(objects.name))[2] = 'revision' and public.is_admin());
+
+-- ---------- Quitar un paciente de la clínica ----------
+-- La clínica quita al paciente solo de su lista: no se borra la mascota de
+-- Kiltrazo (es del tutor) ni el historial de la clínica, que vuelve si el
+-- paciente regresa (pide hora o la vinculan de nuevo). Sus horas pendientes
+-- en esta clínica se cancelan. Borrar la mascota de Kiltrazo solo lo puede
+-- hacer su dueño o el administrador general.
+alter table public.clinic_patients add column if not exists removed_at timestamptz;
+
+create or replace function public.remove_clinic_patient(p_patient uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare cp clinic_patients;
+begin
+  select * into cp from clinic_patients where id = p_patient;
+  if cp.id is null or not is_clinic_member(cp.clinic_id) then raise exception 'Paciente no encontrado'; end if;
+  update clinic_patients set removed_at = now() where id = p_patient;
+  update clinic_appointments set status = 'cancelada'
+  where patient_id = p_patient and starts_at >= now() - interval '3 hours'
+    and status in ('solicitada', 'agendada', 'en_camino');
+  return true;
+end $$;
+grant execute on function public.remove_clinic_patient(uuid) to authenticated;
+
+-- Si el paciente quitado vuelve a pedir hora, reaparece en la lista.
+create or replace function public.restore_clinic_patient() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.patient_id is not null then
+    update clinic_patients set removed_at = null where id = new.patient_id and removed_at is not null;
+  end if;
+  return new;
+end $$;
+drop trigger if exists restore_clinic_patient on public.clinic_appointments;
+create trigger restore_clinic_patient after insert on public.clinic_appointments
+  for each row execute function public.restore_clinic_patient();
+
+-- El tutor deja de ver en "Mi veterinaria" la clínica que lo quitó (sus vacunas
+-- puestas ahí siguen en el historial de la mascota).
+create or replace function public.pet_health(p_pet uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
+    raise exception 'Mascota no encontrada';
+  end if;
+  return jsonb_build_object(
+    'clinics', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name, 'phone', c.phone, 'address', c.address,
+        'home_visits', c.home_visits, 'only_home', c.only_home))
+      from clinics c where c.id in (select clinic_id from clinic_patients where pet_id = p_pet and removed_at is null)), '[]'::jsonb),
+    'vaccines', coalesce((select jsonb_agg(jsonb_build_object('kind', v.kind, 'name', v.name, 'applied_on', v.applied_on,
+        'next_due', v.next_due, 'clinic', c.name) order by v.applied_on desc)
+      from clinic_vaccines v join clinic_patients cp on cp.id = v.patient_id join clinics c on c.id = v.clinic_id
+      where cp.pet_id = p_pet), '[]'::jsonb),
+    'appointments', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'starts_at', a.starts_at, 'service', a.service,
+        'status', a.status, 'place', a.place, 'address', a.address, 'clinic', c.name, 'confirmed_at', a.confirmed_at) order by a.starts_at)
+      from clinic_appointments a join clinic_patients cp on cp.id = a.patient_id join clinics c on c.id = a.clinic_id
+      where cp.pet_id = p_pet and a.starts_at >= now() - interval '3 hours'
+        and a.status in ('solicitada', 'agendada', 'en_camino')), '[]'::jsonb));
+end $$;
+
+-- ---------- Pasar una mascota a otra persona ----------
+-- Si el dueño se la regaló a alguien, en vez de borrarla crea un enlace (sirve
+-- una vez y dura 7 días). Quien lo abre y la recibe queda como su nuevo dueño,
+-- con su cara registrada. Las clínicas conservan su ficha, pero sin enlace con
+-- el dueño anterior: el nuevo dueño la vincula con su propio código si quiere.
+create table if not exists public.pet_gifts (
+  code text primary key,
+  pet_id uuid not null references public.pets on delete cascade,
+  from_user uuid not null references auth.users on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.pet_gifts enable row level security;
+
+create or replace function public.create_pet_gift(p_pet uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare c text;
+begin
+  if not exists (select 1 from pets where id = p_pet and owner_id = auth.uid()) then
+    raise exception 'Mascota no encontrada';
+  end if;
+  delete from pet_gifts where pet_id = p_pet or created_at < now() - interval '7 days';
+  loop
+    c := short_code(8);
+    exit when not exists (select 1 from pet_gifts where code = c);
+  end loop;
+  insert into pet_gifts (code, pet_id, from_user) values (c, p_pet, auth.uid());
+  return c;
+end $$;
+grant execute on function public.create_pet_gift(uuid) to authenticated;
+
+create or replace function public.pet_gift_info(p_code text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('name', p.name, 'photo', p.photo, 'species', p.species, 'breed', p.breed,
+    'from', coalesce(nullif(o.first_name, ''), split_part(o.name, ' ', 1), ''), 'mine', p.owner_id = auth.uid())
+  from pet_gifts g join pets p on p.id = g.pet_id left join profiles o on o.id = g.from_user
+  where g.code = upper(trim(p_code)) and g.created_at > now() - interval '7 days' and p.owner_id = g.from_user;
+$$;
+grant execute on function public.pet_gift_info(text) to authenticated;
+
+create or replace function public.accept_pet_gift(p_code text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare g pet_gifts; o profiles;
+begin
+  select * into o from profiles where id = auth.uid();
+  if o.id is null then raise exception 'Primero completa tu perfil'; end if;
+  delete from pet_gifts where code = upper(trim(p_code)) and created_at > now() - interval '7 days' returning * into g;
+  if g.code is null or not exists (select 1 from pets where id = g.pet_id and owner_id = g.from_user) then
+    raise exception 'Este enlace ya no sirve. Pide uno nuevo.';
+  end if;
+  if g.from_user = auth.uid() then raise exception 'Esta mascota ya es tuya'; end if;
+  update pets set owner_id = auth.uid(),
+    owner_name = coalesce(nullif(trim(concat_ws(' ', o.first_name, o.last_name)), ''), o.name)
+  where id = g.pet_id;
+  update clinic_patients set pet_id = null, tutor_user = null where pet_id = g.pet_id;
+  delete from pet_codes where pet_id = g.pet_id;
+  return g.pet_id;
+end $$;
+grant execute on function public.accept_pet_gift(text) to authenticated;
