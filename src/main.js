@@ -5,6 +5,7 @@ import { esc, isComplete } from './ui.js';
 import { unlockAudio, startAlarm, checkAlarms } from './alarm.js';
 import { refreshArea } from './nearby.js';
 import { installPopup } from './install.js';
+import { LIVE_APP, LIVE_CLINIC, markHidden, busy } from './live.js';
 import { setPage } from './seo.js';
 import { initAnalytics, pageView } from './analytics.js';
 
@@ -121,11 +122,14 @@ app.innerHTML = `
     <a href="#/perfil" data-tab="perfil">🙂<span>Perfil</span></a>
   </nav>`;
 
-const viewEl = document.getElementById('view');
+let viewEl = document.getElementById('view');
 
 let pushTried = false;
 
+let renders = 0;
+
 async function render() {
+  renders++;
   const user = await currentUser();
   // Una vez por visita: renueva la suscripción push de este celular.
   if (user && !pushTried) {
@@ -177,6 +181,7 @@ async function render() {
   setPage();
   try {
     await view(viewEl, params, { user, refresh: render });
+    markHidden(viewEl);
   } catch (err) {
     console.error(err);
     if (reloadIfStale(err)) return;
@@ -196,10 +201,58 @@ async function renderClinic(hash) {
   try {
     const { default: clinicApp } = await import('./clinic/index.js');
     await clinicApp(viewEl, hash.replace(/^#\/?/, ''), { refresh: render });
+    markHidden(viewEl);
   } catch (err) {
     console.error(err);
     if (reloadIfStale(err)) return;
     viewEl.innerHTML = oops(err);
+  }
+}
+
+// Actualización automática (ver live.js): la pantalla se dibuja aparte y, si
+// algo cambió, se reemplaza de una vez, sin parpadeo y sin mover el scroll.
+let quietAt = 0;
+let quietRunning = false;
+async function quietRender() {
+  const hash = location.hash || START;
+  const path = hash.replace(/^#\/?/, '');
+  const clinic = /^clinica(\/|$)/.test(path);
+  if (document.hidden || quietRunning || Date.now() - quietAt < 3000) return;
+  if (!(clinic ? LIVE_CLINIC : LIVE_APP).test(path) || busy(viewEl)) return;
+  quietRunning = true;
+  quietAt = Date.now();
+  const started = renders;
+  try {
+    const fresh = document.createElement('main');
+    fresh.id = 'view';
+    fresh.className = viewEl.className;
+    if (clinic) {
+      const { default: clinicApp } = await import('./clinic/index.js');
+      await clinicApp(fresh, path, { refresh: render });
+    } else {
+      const user = await currentUser();
+      if (!isComplete(user)) return;
+      const { view, params } = resolve(hash);
+      await view(fresh, params, { user, refresh: render });
+    }
+    markHidden(fresh);
+    // Mientras tanto se cambió de pantalla o la persona empezó a usarla.
+    if (started !== renders || (location.hash || START) !== hash || busy(viewEl)) return;
+    if (fresh.innerHTML === viewEl.innerHTML) return;
+    const y = window.scrollY;
+    // El menú de Clínica también tiene su propio scroll.
+    const keep = ['.ck-side', '.ck-navs'].map((sel) => [sel, viewEl.querySelector(sel)]);
+    viewEl.replaceWith(fresh);
+    viewEl = fresh;
+    keep.forEach(([sel, old]) => {
+      const now = fresh.querySelector(sel);
+      if (old && now) [now.scrollTop, now.scrollLeft] = [old.scrollTop, old.scrollLeft];
+    });
+    window.scrollTo(0, y);
+  } catch (err) {
+    console.warn('Pantalla sin actualizar', err);
+  } finally {
+    quietRunning = false;
   }
 }
 
@@ -223,6 +276,12 @@ window.addEventListener('petsafe:changed', () => updateBadge());
 // nuevos: en iPhone la conexión en vivo se corta en segundo plano.
 document.addEventListener('visibilitychange', () => document.hidden || updateBadge());
 setInterval(() => document.hidden || updateBadge(), 30000);
+// Las pantallas con datos que cambian se ponen al día al volver a la app, al
+// llegar un aviso nuevo y, en Kiltrazo Clínica, cada 20 s.
+document.addEventListener('visibilitychange', () => document.hidden || quietRender());
+window.addEventListener('focus', () => quietRender());
+window.addEventListener('petsafe:changed', () => /^#\/avisos/.test(location.hash) && quietRender());
+setInterval(() => /^#\/clinica(\/|$)/.test(location.hash) && quietRender(), 20000);
 // Al tocar una notificación con la app abierta, el Service Worker pide navegar.
 navigator.serviceWorker?.addEventListener('message', (e) => {
   if (e.data?.type === 'navigate') location.hash = e.data.url.replace(/^.*#/, '#');
