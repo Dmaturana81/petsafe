@@ -99,12 +99,16 @@ Los avisos se guardan en la tabla `notifications`. Cada aviso nuevo llama (con `
 Al crear su perfil cada persona elige una clave; con su correo y clave entra desde cualquier dispositivo y ve
 sus datos y mascotas (**Perfil → ¿Ya tienes cuenta?**). Quien ya usaba la app sin clave la crea en
 **Perfil → Tu cuenta**. "Olvidé mi contraseña" envía un correo con un enlace para crear una clave nueva.
-Quien entra con un correo de la tabla `admin_emails` es administrador. Configuración, una vez:
+Quien entra con un correo de la tabla `admin_emails` es administrador.
+
+**Cambio de dominio**: el celular guarda la sesión por dirección. Cuando GitHub Pages empieza a redirigir
+la dirección antigua a la nueva, la app que ya estaba en el celular sigue abriendo la antigua desde el caché
+y lleva la sesión a la nueva (`src/move.js`); allá se retoma la misma cuenta y se muestra `#/mudanza`. Configuración, una vez:
 
 1. Correr `supabase/schema.sql` y luego `insert into public.admin_emails values ('tu-correo@ejemplo.com');` (en minúsculas).
 2. En Supabase → **Authentication → URL Configuration**: Site URL `https://andresmaturana-ui.github.io/petsafe/`
    y en Redirect URLs agregar `https://andresmaturana-ui.github.io/petsafe/**` (para el enlace de "Olvidé mi
-   contraseña").
+   contraseña"). Con dominio propio, agregar también `https://kiltrazo.cl/**` y dejar la dirección nueva en Site URL.
 3. En Supabase → **Authentication → Sign In / Providers → Email**, apagar **Confirm email**: así la cuenta queda
    lista al tiro, sin correo de confirmación (el correo gratis de Supabase permite muy pocos envíos por hora).
    Con eso nadie comprueba que el correo sea de quien lo escribe, así que el administrador debe crear su

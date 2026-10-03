@@ -29,6 +29,8 @@ import appointment from './views/appointment.js';
 import clinicPage from './views/clinic-page.js';
 import finder from './views/finder.js';
 import landing from './views/landing.js';
+import moved from './views/moved.js';
+import { leaveIfMoved, arriveAfterMove } from './move.js';
 
 registerSW({ immediate: true });
 
@@ -84,6 +86,7 @@ const routes = [
   ['hora/:id', appointment],
   ['veterinarios', finder],
   ['kiltrazo', landing],
+  ['mudanza', moved],
   ['c/:slug', clinicPage],
   ['c/:slug/:step', clinicPage],
 ];
@@ -149,7 +152,7 @@ async function render() {
   document.body.classList.toggle('web-mode', [clinicPage, finder, landing].includes(view));
   document.body.classList.toggle('finder-mode', view === finder || view === landing);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
-  if (!isComplete(user) && ![profile, admin, password, privacy, terms, clinicPage, finder, landing].includes(view)) view = profile;
+  if (!isComplete(user) && ![profile, admin, password, privacy, terms, clinicPage, finder, landing, moved].includes(view)) view = profile;
 
   const tab = hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
@@ -213,7 +216,18 @@ navigator.serviceWorker?.addEventListener('message', (e) => {
 document.addEventListener('pointerdown', unlockAudio, { once: true });
 // Vuelta desde un enlace del correo: confirmar el correo, o "Olvidé mi
 // contraseña" (type=recovery), que lleva a crear una clave nueva.
+// Dominio nuevo: la app de la dirección antigua lleva la cuenta a la nueva (ver move.js).
+// Se revisa al abrir y al volver a la app (a lo más cada 10 minutos).
+let moveChecked = 0;
+const checkMove = () => {
+  if (document.hidden || Date.now() - moveChecked < 600000) return;
+  moveChecked = Date.now();
+  leaveIfMoved().catch((err) => console.warn('Sin revisar la mudanza', err));
+};
+checkMove();
+document.addEventListener('visibilitychange', checkMove);
 (async () => {
+  await arriveAfterMove();
   const recovery = /(^|[#&])type=recovery(&|$)/.test(location.hash);
   const error = await finishEmailLink().catch((err) => err.message);
   if (error !== null) {

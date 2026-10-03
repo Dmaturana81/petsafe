@@ -424,3 +424,5 @@ export const setPassword = createAccount;
 export const signOut = async () => {};
 export const loginEmail = async () => '';
 export const finishEmailLink = async () => null;
+export const sessionToken = async () => '';
+export const adoptSession = async () => false;
