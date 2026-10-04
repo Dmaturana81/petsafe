@@ -3,12 +3,40 @@
 import { esc } from '../ui.js';
 import { SPECIES } from '../breeds.js';
 
-export const SERVICES = { consulta: 'Consulta', control: 'Control', vacuna: 'Vacuna', cirugia: 'Cirugía', peluqueria: 'Peluquería', otro: 'Otro', urgencia: '🚨 Urgencia' };
+export const SERVICES = { consulta: 'Consulta', control: 'Control', vacuna: 'Vacuna', cirugia: 'Cirugía', peluqueria: 'Peluquería', otro: 'Otro', urgencia: '🚨 Urgencia', operativo: '🏛️ Operativo' };
 export const STATUS = {
   solicitada: 'Pedida por el tutor', en_camino: 'En camino',
   agendada: 'Agendada', en_sala: 'En sala', en_atencion: 'En atención', atendida: 'Atendida', no_vino: 'No vino', cancelada: 'Cancelada',
 };
 export const ROLES = { vet: 'Veterinario/a', recepcion: 'Recepción' };
+/** En una municipalidad, "recepción" es el funcionario o funcionaria municipal. */
+export const roleName = (role, clinic) => (clinic?.kind === 'municipio' && role === 'recepcion' ? 'Funcionario/a' : ROLES[role] || '');
+
+// ---------- Kiltrazo Municipal ----------
+
+/** Estado del animal en la ficha, con su color. */
+export const PET_STATUS = {
+  con_responsable: ['Con responsable', 'green'],
+  comunitario: ['Comunitario', 'sun'],
+  extraviado: ['Extraviado', 'red'],
+  encontrado: ['Encontrado', 'sun'],
+  en_recuperacion: ['En recuperación', 'sun'],
+  en_adopcion: ['En adopción', 'green'],
+  fallecido: ['Fallecido', ''],
+};
+export const statusTag = (s) => (PET_STATUS[s] ? `<span class="ck-tag ${PET_STATUS[s][1]}">${PET_STATUS[s][0]}</span>` : '');
+
+/** Qué se hace en un operativo. */
+export const DRIVE_SERVICES = {
+  esterilizacion: '✂️ Esterilización',
+  chip: '🔖 Microchip',
+  antirrabica: '💉 Vacuna antirrábica',
+  desparasitacion: '💊 Desparasitación',
+  cara: '📷 Registro de su cara en Kiltrazo',
+};
+
+/** El microchip (ISO 11784) tiene 15 números. Vacío también vale. */
+export const chipOk = (chip) => !chip || /^\d{15}$/.test(String(chip).replace(/\s/g, ''));
 export const KINDS = { vacuna: 'Vacuna', desparasitacion_interna: 'Desparasitación interna', desparasitacion_externa: 'Desparasitación externa' };
 
 /** 2026-10-13 → 13-10-2026 */

@@ -12,7 +12,11 @@ export const {
   linkPet, createPetCode, petHealth, unlinkPet, runReminders, fileUrls,
   requestAppointment, alertEmergency, cancelMyAppointment, myAppointment, confirmMyAppointment, notifyAppointment, createTransferCode, transferInfo, claimTransfer, acceptTransfer,
   saveReview, nearbyClinics, listBanners, saveBanner, deleteBanner, bannerClick, saveSpecialties, saveSchedule, busyElsewhere, availableSlots, publicClinic, guestRequestAppointment,
+  createMunicipality, saveMuni, publicDrive, bookDrive, muniBoard, muniStats,
 } = B;
+
+/** ¿Es una municipalidad (Kiltrazo Municipal) y no una clínica? */
+export const isMuni = (c) => c?.kind === 'municipio';
 
 // ---------- Clínica activa (por si alguien trabaja en dos) ----------
 
@@ -144,6 +148,23 @@ export function directions(a) {
     google: `https://www.google.com/maps/dir/?api=1&destination=${q}`,
     waze: a.lat != null && a.lng != null ? `https://waze.com/ul?ll=${q}&navigate=yes` : `https://waze.com/ul?q=${q}&navigate=yes`,
   };
+}
+
+// ---------- Operativos (Kiltrazo Municipal) ----------
+
+export const listDrives = (clinicId) => B.list('clinic_drives', { clinicId }, { order: 'day' });
+export const getDrive = (id) => B.get('clinic_drives', id);
+export const saveDrive = ({ id, ...d }) => (id ? B.update('clinic_drives', id, d) : B.insert('clinic_drives', d));
+export const deleteDrive = (id) => B.remove('clinic_drives', id);
+/** Todas las reservas de operativos de la municipalidad. */
+export const muniBookings = (clinicId) => B.list('clinic_appointments', { clinicId, service: 'operativo' });
+/** Reservas de un operativo (horas de la agenda), por horario. */
+export const driveBookings = (driveId) => B.list('clinic_appointments', { driveId }, { order: 'startsAt' });
+
+/** Cuántos cupos tiene en total: horarios × animales por horario. */
+export function driveCapacity(d) {
+  const mins = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
+  return Math.max(0, Math.floor((mins(d.ends) - mins(d.starts)) / d.slotMinutes)) * d.perSlot;
 }
 
 // ---------- Fechas ----------

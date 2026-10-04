@@ -85,3 +85,20 @@ export function showClinics(el, clinics, here, onPick) {
   if (here && clinics.length) map.fitBounds(L.latLngBounds([[here.lat, here.lng], ...clinics.slice(0, 3).map((c) => [c.lat, c.lng])]).pad(0.2), { maxZoom: 15 });
   return map;
 }
+
+const boardIcon = (kind) => L.divIcon({
+  className: `board-marker ${kind}`,
+  html: `<span>${kind === 'lost' ? '🔴' : kind === 'found' ? '🟢' : '🟡'}</span>`,
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+/** Kiltrazo Municipal: la comuna (círculo) con los perdidos y encontrados. */
+export function showBoard(el, center, km, points) {
+  const map = base(el, [center.lat, center.lng], 13);
+  const area = L.circle([center.lat, center.lng], { radius: km * 1000, color: '#4f7fb8', weight: 2, dashArray: '6 6', fillOpacity: 0.05 }).addTo(map);
+  for (const p of points) L.marker([p.lat, p.lng], { icon: boardIcon(p.kind), title: p.label }).addTo(map).bindPopup(p.label);
+  // Después de que el mapa toma su tamaño (si no, queda muy alejado).
+  setTimeout(() => { map.invalidateSize(); map.fitBounds(area.getBounds(), { padding: [10, 10] }); }, 80);
+  return map;
+}

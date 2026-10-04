@@ -29,6 +29,7 @@ import receive, { pendingTransfer, TRANSFER_KEY } from './views/receive.js';
 import clinicsMap from './views/clinics-map.js';
 import appointment from './views/appointment.js';
 import clinicPage from './views/clinic-page.js';
+import drivePage from './views/drive.js';
 import finder from './views/finder.js';
 import landing from './views/landing.js';
 import gift, { pendingGift, GIFT_KEY } from './views/gift.js';
@@ -94,6 +95,7 @@ const routes = [
   ['mudanza', moved],
   ['c/:slug', clinicPage],
   ['c/:slug/:step', clinicPage],
+  ['operativo/:id', drivePage],
 ];
 
 function resolve(hash) {
@@ -139,7 +141,8 @@ async function render() {
   }
   const hash = location.hash || START;
   // Kiltrazo Clínica (para veterinarias): se carga aparte, con su propio menú.
-  const clinic = /^#\/clinica(\/|$)/.test(hash);
+  // #/municipio es la entrada de Kiltrazo Municipal, que usa las mismas pantallas.
+  const clinic = /^#\/(clinica|municipio)(\/|$)/.test(hash);
   document.body.classList.toggle('clinic-mode', clinic);
   if (clinic) return renderClinic(hash);
   let { view, params } = resolve(hash);
@@ -166,10 +169,10 @@ async function render() {
   // Quien llega por primera vez, sin perfil, ve la presentación de Kiltrazo.
   if (!isComplete(user) && view === home) view = landing;
   // Estas páginas se ven sin la app: sin menú y sin pedir el perfil.
-  document.body.classList.toggle('web-mode', [clinicPage, finder, landing, tag].includes(view));
+  document.body.classList.toggle('web-mode', [clinicPage, finder, landing, tag, drivePage].includes(view));
   document.body.classList.toggle('finder-mode', view === finder || view === landing);
   // Primer uso, o perfil creado antes de pedir todos los datos: completar perfil.
-  if (!isComplete(user) && ![profile, admin, password, privacy, terms, clinicPage, finder, landing, moved, tag].includes(view)) view = profile;
+  if (!isComplete(user) && ![profile, admin, password, privacy, terms, clinicPage, finder, landing, moved, tag, drivePage].includes(view)) view = profile;
 
   const tab = hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));

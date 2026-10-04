@@ -3,22 +3,26 @@
 
 import { esc, toast, go } from '../../ui.js';
 import { SPECIES, breedOptions } from '../../breeds.js';
-import { listPatients, getPatient, savePatient, saveAppointment, linkPet, removePatient, restorePatient } from '../data.js';
-import { avatar, speciesLine, age } from '../ui.js';
+import { listPatients, getPatient, savePatient, saveAppointment, linkPet, removePatient, restorePatient, isMuni } from '../data.js';
+import { avatar, speciesLine, age, statusTag, PET_STATUS, chipOk } from '../ui.js';
+import { rnmPending } from '../rnm.js';
+import { rutOk, formatRut } from '../review.js';
 
 export default async function patients(el, _params, { clinic }) {
   const everyone = await listPatients(clinic.id);
   const list = everyone.filter((p) => !p.removedAt);
   const removed = everyone.filter((p) => p.removedAt);
+  const muni = isMuni(clinic);
   el.innerHTML = `
     <header class="ck-head">
-      <div><h1>Pacientes</h1><p class="ck-sub">${list.length} ${list.length === 1 ? 'paciente' : 'pacientes'}</p></div>
+      <div><h1>${muni ? 'Animales' : 'Pacientes'}</h1><p class="ck-sub">${list.length} ${muni ? (list.length === 1 ? 'animal' : 'animales') : list.length === 1 ? 'paciente' : 'pacientes'}</p></div>
       <div class="ck-actions">
         <a class="btn small secondary" href="#/clinica/vincular">Vincular mascota de Kiltrazo</a>
-        <a class="btn small primary" href="#/clinica/pacientes/nuevo">+ Nuevo paciente</a>
+        <a class="btn small primary" href="#/clinica/pacientes/nuevo">${muni ? '+ Nuevo animal' : '+ Nuevo paciente'}</a>
       </div>
     </header>
-    <input class="ck-search" type="search" placeholder="Buscar por nombre, tutor, teléfono o chip…" aria-label="Buscar paciente" id="ck-q">
+    <input class="ck-search" type="search" placeholder="Buscar por nombre, ${muni ? 'responsable' : 'tutor'}, teléfono o chip…" aria-label="Buscar" id="ck-q">
+    ${muni ? `<div class="ck-actions"><label class="spec-chip"><input type="checkbox" id="ck-rnm-only"><span>Por inscribir en el Registro Nacional (${list.filter(rnmPending).length})</span></label></div>` : ''}
     <div class="card ck-list" id="ck-plist"></div>
     ${removed.length ? `<details class="ck-removed">
       <summary>Pacientes quitados (${removed.length})</summary>
@@ -32,24 +36,28 @@ export default async function patients(el, _params, { clinic }) {
         </div>`).join('')}</div>
     </details>` : ''}`;
 
-  const draw = (q = '') => {
+  const draw = (q = el.querySelector('#ck-q')?.value || '') => {
     const t = q.trim().toLowerCase();
-    const rows = t ? list.filter((p) => [p.name, p.tutorName, p.tutorPhone, p.chip, p.breed].join(' ').toLowerCase().includes(t)) : list;
+    const base = el.querySelector('#ck-rnm-only')?.checked ? list.filter(rnmPending) : list;
+    const rows = t ? base.filter((p) => [p.name, p.tutorName, p.tutorPhone, p.chip, p.breed].join(' ').toLowerCase().includes(t)) : base;
     el.querySelector('#ck-plist').innerHTML = rows.length
       ? rows.map((p) => `
         <a class="ck-prow" href="#/clinica/paciente/${p.id}">
           ${avatar(p)}
           <span class="ck-prow-main"><strong>${esc(p.name)}</strong><small>${esc([speciesLine(p), age(p.birthDate)].filter(Boolean).join(' · '))}</small></span>
-          <span class="ck-prow-tutor"><strong>${esc(p.tutorName)}</strong><small>${esc(p.tutorPhone)}</small></span>
+          <span class="ck-prow-tutor"><strong>${esc(p.tutorName || (muni && p.status === 'comunitario' ? 'Sin responsable' : ''))}</strong><small>${esc(p.tutorPhone)}</small></span>
           <span class="ck-tags">
+            ${muni && p.status && p.status !== 'con_responsable' ? statusTag(p.status) : ''}
+            ${muni && p.rnmAt ? '<span class="ck-tag green">Registro Nacional</span>' : ''}
             ${p.allergies ? '<span class="ck-tag red">Alergias</span>' : ''}
             ${p.petId ? '<span class="ck-tag green">Kiltrazo</span>' : ''}
           </span>
         </a>`).join('')
-      : `<p class="ck-empty">${t ? 'Nada coincide con la búsqueda.' : 'Aún no hay pacientes. Crea uno, o vincula una mascota que ya esté en Kiltrazo con el código de su tutor.'}</p>`;
+      : `<p class="ck-empty">${t ? 'Nada coincide con la búsqueda.' : muni ? 'Aún no hay animales. Crea una ficha, o llegarán solos cuando los vecinos reserven en un operativo.' : 'Aún no hay pacientes. Crea uno, o vincula una mascota que ya esté en Kiltrazo con el código de su tutor.'}</p>`;
   };
   draw();
   el.querySelector('#ck-q').addEventListener('input', (e) => draw(e.target.value));
+  el.querySelector('#ck-rnm-only')?.addEventListener('change', () => draw());
   el.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
     b.disabled = true;
     try {
@@ -72,14 +80,17 @@ export async function patientForm(el, { id }, { clinic }) {
     if (fromAppt) p.name = fromAppt.name;
   }
   const v = (k) => esc(p[k] ?? '');
+  const muni = isMuni(clinic);
+  const who = muni ? 'Responsable' : 'Tutor';
 
   el.innerHTML = `
     <header class="ck-head">
-      <div><h1>${id ? `Editar ficha de ${v('name')}` : 'Nuevo paciente'}</h1>
-      ${p.petId ? '<p class="ck-sub">Vinculado a Kiltrazo: el tutor ve sus vacunas y horas en su app.</p>' : ''}</div>
+      <div><h1>${id ? `Editar ficha de ${v('name')}` : muni ? 'Nuevo animal' : 'Nuevo paciente'}</h1>
+      ${p.petId ? `<p class="ck-sub">Vinculado a Kiltrazo: ${muni ? 'el responsable' : 'el tutor'} ve sus vacunas y horas en su app.</p>` : ''}</div>
     </header>
     <form class="card form ck-form-grid" id="ck-pform">
-      <h2 class="ck-span">Mascota</h2>
+      <h2 class="ck-span">${muni ? 'Animal' : 'Mascota'}</h2>
+      ${muni ? `<label class="ck-span">Estado<select name="status">${Object.entries(PET_STATUS).map(([k, [t]]) => `<option value="${k}" ${(p.status || 'con_responsable') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
       <label class="ck-span2">Nombre<input name="name" required maxlength="80" value="${v('name')}"></label>
       <label>Especie<select name="species"><option value="">—</option>${Object.entries(SPECIES).map(([k, t]) => `<option value="${k}" ${p.species === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label>Raza<input name="breed" list="ck-breeds" value="${v('breed')}" autocomplete="off"></label>
@@ -88,18 +99,20 @@ export async function patientForm(el, { id }, { clinic }) {
       <label class="ck-check"><input type="checkbox" name="neutered" ${p.neutered ? 'checked' : ''}> Esterilizado/a</label>
       <label>Fecha de nacimiento<input name="birthDate" type="date" value="${v('birthDate')}"></label>
       <label>Color<input name="color" value="${v('color')}"></label>
-      <label class="ck-span2">N° de chip<input name="chip" inputmode="numeric" value="${v('chip')}"></label>
+      <label class="ck-span2">${muni ? 'N° de microchip (15 números)' : 'N° de chip'}<input name="chip" inputmode="numeric" value="${v('chip')}" ${muni ? 'maxlength="20" placeholder="Ej.: 900 123 456 789 012"' : ''}></label>
       <label class="ck-span">Alergias<input name="allergies" value="${v('allergies')}" placeholder="Ej.: amoxicilina"></label>
       <label class="ck-span">Notas<textarea name="notes" rows="2">${v('notes')}</textarea></label>
       <div class="ck-span ck-photo-row">
         <img class="ck-avatar big" id="ck-photo-prev" src="${v('photo')}" alt="" ${p.photo ? '' : 'hidden'}>
         <label class="btn small ghost">📷 ${p.photo ? 'Cambiar foto' : 'Agregar foto'}<input type="file" accept="image/*" hidden id="ck-photo"></label>
       </div>
-      <h2 class="ck-span">Tutor</h2>
+      <h2 class="ck-span">${who}</h2>
+      ${muni ? '<p class="ck-span small muted">Si es un animal comunitario o no se sabe de quién es, déjalo en blanco.</p>' : ''}
       <label class="ck-span2">Nombre<input name="tutorName" value="${v('tutorName')}" autocomplete="off"></label>
+      ${muni ? `<label class="ck-span2">RUT (lo pide el Registro Nacional)<input name="tutorRut" value="${v('tutorRut')}" placeholder="12.345.678-9" autocomplete="off"></label>` : ''}
       <label>Teléfono<input name="tutorPhone" type="tel" value="${v('tutorPhone')}" placeholder="+56 9 1234 5678"></label>
       <label>Correo<input name="tutorEmail" type="email" value="${v('tutorEmail')}"></label>
-      <label class="ck-span">Dirección (para visitas a domicilio)<input name="tutorAddress" value="${v('tutorAddress')}" placeholder="Calle, número, depto, comuna"></label>
+      <label class="ck-span">${muni ? 'Dirección' : 'Dirección (para visitas a domicilio)'}<input name="tutorAddress" value="${v('tutorAddress')}" placeholder="Calle, número, depto, comuna"></label>
       <div class="ck-span ck-row-end">
         <a class="btn ghost small" href="${id ? `#/clinica/paciente/${id}` : '#/clinica/pacientes'}">Cancelar</a>
         <button class="btn primary small">${id ? 'Guardar cambios' : 'Crear ficha'}</button>
@@ -154,8 +167,14 @@ export async function patientForm(el, { id }, { clinic }) {
       clinicId: clinic.id, name: f.name.trim(), species: f.species, breed: f.breed.trim(), sex: f.sex, neutered: Boolean(f.neutered),
       birthDate: f.birthDate || null, color: f.color.trim(), chip: f.chip.trim(), allergies: f.allergies.trim(), notes: f.notes.trim(),
       tutorName: f.tutorName.trim(), tutorPhone: f.tutorPhone.trim(), tutorEmail: f.tutorEmail.trim().toLowerCase(),
-      tutorAddress: f.tutorAddress.trim(), ...(photo ? { photo } : {}),
+      tutorAddress: f.tutorAddress.trim(), ...(photo ? { photo } : {}), ...(muni ? { status: f.status } : {}),
     };
+    if (muni && !chipOk(row.chip)) return toast('El microchip tiene 15 números. Revísalo o déjalo en blanco.', 'bad');
+    if (muni) {
+      if (f.tutorRut.trim() && !rutOk(f.tutorRut)) return toast('Revisa el RUT del responsable', 'bad');
+      row.tutorRut = f.tutorRut.trim() ? formatRut(f.tutorRut) : '';
+    }
+    if (muni) row.chip = row.chip.replace(/\s/g, '');
     const btn = form.querySelector('button.primary');
     btn.disabled = true;
     try {
