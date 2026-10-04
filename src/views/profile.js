@@ -2,6 +2,7 @@ import { saveUser, listUsers, switchUser, myPets, removeMyPet, createPetGift, sa
 import { mountEmailLogin } from './login-email.js';
 import { askPermission, notificationsSupported } from '../notify.js';
 import { esc, toast, go, isComplete, afterSetup } from '../ui.js';
+import { comunaField, findComuna } from '../comunas.js';
 import { SPECIES, breedOptions, describe } from '../breeds.js';
 import { PROMOS_VERSION, SUPPORT_URL } from '../config.js';
 import { promosBox, supportCard } from './privacy.js';
@@ -31,6 +32,7 @@ export default async function profile(el, _params, { user, refresh }) {
           <dt>Teléfono (WhatsApp)</dt><dd>${esc(user.phone)}</dd>
           <dt>Correo</dt><dd>${esc(user.email)}</dd>
           <dt>Dirección</dt><dd>${esc(user.address)}</dd>
+          <dt>Comuna</dt><dd>${user.comuna ? esc(user.comuna) : 'Sin elegir. Elígela para recibir los operativos de tu municipalidad.'}</dd>
         </dl>
         <button class="btn secondary" id="edit-profile">✏️ Editar mis datos</button>` : ''}
       <form class="form" id="profile" ${saved ? 'hidden' : ''}>
@@ -39,6 +41,8 @@ export default async function profile(el, _params, { user, refresh }) {
         <label>Teléfono (WhatsApp)<input name="phone" type="tel" required placeholder="+56 9 1234 5678" value="${esc(user?.phone)}" autocomplete="tel"></label>
         <label>Correo<input name="email" type="email" required value="${esc(user?.email)}" autocomplete="email"></label>
         <label>Dirección<input name="address" required placeholder="Calle, número, comuna" value="${esc(user?.address)}" autocomplete="street-address"></label>
+        <label>Comuna${comunaField(user?.comuna)}</label>
+        <p class="muted small">Con tu comuna te avisamos de los operativos de tu municipalidad: vacunación, esterilización, microchip.</p>
         ${CLOUD && !user ? `
           <label>Crea una clave<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
           <p class="muted small">Con tu correo y esta clave entras desde cualquier celular o computador.</p>` : ''}
@@ -172,6 +176,8 @@ export default async function profile(el, _params, { user, refresh }) {
     const f = new FormData(e.target);
     const data = Object.fromEntries(['firstName', 'lastName', 'phone', 'email', 'address'].map((k) => [k, f.get(k).trim()]));
     data.email = data.email.toLowerCase();
+    data.comuna = findComuna(f.get('comuna'));
+    if (!data.comuna) return toast('Elige tu comuna de la lista', 'bad');
     // La casilla de ofertas solo aparece al crear el perfil; nunca viene marcada.
     if (e.target.promos) Object.assign(data, { promos: e.target.promos.checked, promosVersion: PROMOS_VERSION });
     if (f.get('password') && !(await makeAccount(data.email, f.get('password'), e.target))) return;

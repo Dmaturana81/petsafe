@@ -2716,3 +2716,94 @@ grant execute on function public.muni_stats() to authenticated;
 alter table public.clinic_patients add column if not exists tutor_rut text not null default '';
 alter table public.clinic_patients add column if not exists rnm_at date;
 alter table public.clinic_patients add column if not exists rnm_number text not null default '';
+
+-- ---------- Operativos: aviso a los tutores de la comuna ----------
+-- El tutor elige su comuna en el perfil. Cuando una municipalidad aprobada
+-- publica un operativo, se avisa a los tutores cuya comuna calza con la de la
+-- municipalidad (y a nadie más). La municipalidad solo ve a cuántos se avisó,
+-- nunca quiénes son.
+alter table public.profiles add column if not exists comuna text not null default '';
+
+-- "Ñuñoa " y "nunoa" son la misma comuna (igual que comunaKey en src/comunas.js).
+create or replace function public.comuna_key(t text) returns text
+language sql immutable as $$
+  select regexp_replace(lower(translate(coalesce(t, ''), 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun')), '[^a-z0-9]', '', 'g');
+$$;
+create index if not exists profiles_comuna on public.profiles (public.comuna_key(comuna)) where comuna <> '';
+
+-- Un registro por operativo avisado: así se avisa una sola vez, aunque el
+-- operativo se edite después. Solo lo escribe notify_drive.
+create table if not exists public.drive_notices (
+  id uuid primary key references public.clinic_drives on delete cascade,
+  sent_count int not null default 0,
+  sent_at timestamptz not null default now()
+);
+alter table public.drive_notices enable row level security;
+drop policy if exists "equipo municipal ve sus avisos" on public.drive_notices;
+create policy "equipo municipal ve sus avisos" on public.drive_notices for select
+  using (exists (select 1 from clinic_drives d where d.id = drive_notices.id and is_clinic_member(d.clinic_id)));
+
+-- Avisa el operativo a los tutores de la comuna. No hace nada si la
+-- municipalidad aún no está aprobada, si las inscripciones están cerradas, si
+-- el operativo ya pasó o si ya se avisó. Devuelve a cuántos tutores avisó.
+create or replace function public.notify_drive(p_drive uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare d clinic_drives; c clinics; n int;
+begin
+  select * into d from clinic_drives where id = p_drive;
+  if d.id is null then return 0; end if;
+  select * into c from clinics where id = d.clinic_id;
+  if c.kind <> 'municipio' or not c.approved or not d.open or comuna_key(c.comuna) = ''
+     or d.day < (now() at time zone 'America/Santiago')::date then
+    return 0;
+  end if;
+  insert into drive_notices (id) values (d.id) on conflict (id) do nothing;
+  if not found then return 0; end if;
+  insert into notifications (user_id, type, title, body, url)
+  select p.id, 'info', 'Operativo en ' || trim(c.comuna) || ' 🏛️',
+    d.title || ': ' || to_char(d.day, 'DD/MM') || ', de ' || to_char(d.starts, 'HH24:MI') || ' a ' || to_char(d.ends, 'HH24:MI')
+      || coalesce(', en ' || nullif(d.place, ''), '') || '. Es gratis y con cupos: reserva el tuyo.',
+    '#/operativo/' || d.id::text
+  from profiles p
+  where p.comuna <> '' and comuna_key(p.comuna) = comuna_key(c.comuna);
+  get diagnostics n = row_count;
+  update drive_notices set sent_count = n where id = d.id;
+  return n;
+end $$;
+revoke execute on function public.notify_drive(uuid) from public, anon, authenticated;
+
+-- Al crear el operativo (o al abrir sus inscripciones) se avisa a la comuna.
+create or replace function public.drive_notify_trigger() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform notify_drive(new.id);
+  return new;
+end $$;
+drop trigger if exists clinic_drives_notify on public.clinic_drives;
+create trigger clinic_drives_notify after insert or update of open on public.clinic_drives
+  for each row execute function public.drive_notify_trigger();
+
+-- Los operativos preparados antes de la aprobación se avisan al aprobar la municipalidad.
+create or replace function public.muni_approved_notify() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.kind = 'municipio' and new.approved and not old.approved then
+    perform notify_drive(d.id) from clinic_drives d where d.clinic_id = new.id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists clinics_approved_notify on public.clinics;
+create trigger clinics_approved_notify after update of approved on public.clinics
+  for each row execute function public.muni_approved_notify();
+
+-- Lo que ve el tutor en el inicio: los próximos operativos de su comuna.
+create or replace function public.comuna_drives() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', d.id, 'title', d.title, 'day', d.day, 'place', d.place,
+    'starts', to_char(d.starts, 'HH24:MI'), 'ends', to_char(d.ends, 'HH24:MI'), 'muni', c.name) order by d.day, d.starts), '[]'::jsonb)
+  from profiles p
+  join clinics c on c.kind = 'municipio' and c.approved and comuna_key(c.comuna) = comuna_key(p.comuna)
+  join clinic_drives d on d.clinic_id = c.id
+  where p.id = auth.uid() and p.comuna <> '' and d.open and d.day >= (now() at time zone 'America/Santiago')::date;
+$$;
+grant execute on function public.comuna_drives() to authenticated;

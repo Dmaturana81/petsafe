@@ -127,6 +127,8 @@ img { max-width: 100%; }
   text-decoration: none; color: var(--text);
 }
 .register-cta > span:first-child { font-size: 1.8rem; }
+.home-drives { display: grid; gap: 12px; }
+.home-drives:empty { display: none; }
 .register-cta strong { display: block; }
 .register-cta small { color: var(--muted); }
 .register-cta .chev { margin-left: auto; font-size: 1.8rem; color: var(--coral); }

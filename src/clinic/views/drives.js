@@ -2,7 +2,7 @@
 // cupos que los vecinos reservan desde un enlace, con o sin la app.
 
 import { esc, toast, go } from '../../ui.js';
-import { listDrives, getDrive, saveDrive, muniBookings, driveBookings, driveCapacity, listPatients, today } from '../data.js';
+import { listDrives, getDrive, saveDrive, muniBookings, driveBookings, driveCapacity, listPatients, driveNotice, today } from '../data.js';
 import { DRIVE_SERVICES, STATUS, fmtDay, fmtTime, waLink, avatar, speciesLine } from '../ui.js';
 
 const hm = (t) => String(t || '').slice(0, 5);
@@ -66,6 +66,7 @@ export async function driveForm(el, { id }, { clinic }) {
       <label>Minutos por cupo<select name="slotMinutes">${[10, 15, 20, 30, 45, 60].map((n) => `<option value="${n}" ${Number(d.slotMinutes) === n ? 'selected' : ''}>${n} minutos</option>`).join('')}</select></label>
       <label>Animales por cupo<input name="perSlot" type="number" min="1" max="50" required value="${v('perSlot')}"></label>
       <p class="ck-span ck-total" id="ck-total"></p>
+      ${id ? '' : `<p class="ck-span ck-tip small">📣 Al crearlo, Kiltrazo avisa a los tutores que tienen <b>${esc(clinic.comuna || 'tu comuna')}</b> como su comuna${clinic.approved === false ? ' (cuando Kiltrazo apruebe tu municipalidad)' : ''}. El aviso se envía una sola vez: revisa el día, la hora y el lugar antes de crear.</p>`}
       <label class="ck-span">Indicaciones para el vecino<textarea name="notes" rows="2" maxlength="600" placeholder="Ej.: ayuno de 12 horas, traer collar y correa, perros con bozal si muerden.">${v('notes')}</textarea></label>
       <div class="ck-span ck-row-end">
         <a class="btn ghost small" href="${id ? `#/clinica/operativo/${id}` : '#/clinica/operativos'}">Cancelar</a>
@@ -110,7 +111,7 @@ export async function driveForm(el, { id }, { clinic }) {
 }
 
 export async function drive(el, { id }, { clinic }) {
-  const [d, list, patients] = await Promise.all([getDrive(id), driveBookings(id), listPatients(clinic.id)]);
+  const [d, list, patients, notice] = await Promise.all([getDrive(id), driveBookings(id), listPatients(clinic.id), driveNotice(id).catch(() => null)]);
   if (!d) {
     el.innerHTML = '<div class="card"><p>No encontramos este operativo.</p><a class="btn primary" href="#/clinica/operativos">Ver operativos</a></div>';
     return;
@@ -120,6 +121,13 @@ export async function drive(el, { id }, { clinic }) {
   const url = driveUrl(d.id);
   const upcoming = d.day >= today();
   const pat = (a) => patients.find((p) => p.id === a.patientId) || { name: a.patientName };
+  const comuna = esc(clinic.comuna || 'la comuna');
+  const noticeText = notice
+    ? `📣 Avisamos a <b>${notice.sentCount} ${notice.sentCount === 1 ? 'tutor' : 'tutores'}</b> de Kiltrazo con ${comuna} como su comuna${notice.sentAt ? `, el ${esc(fmtDay(String(notice.sentAt).slice(0, 10)))}` : ''}.`
+    : !upcoming ? ''
+      : clinic.approved === false ? `🕒 Avisaremos a los tutores de ${comuna} cuando Kiltrazo apruebe tu municipalidad.`
+        : d.open === false ? `Al abrir las inscripciones, avisaremos a los tutores de Kiltrazo con ${comuna} como su comuna.`
+          : '';
   const msg = `${clinic.name} te invita al ${d.title}: ${fmtDay(d.day)}, de ${hm(d.starts)} a ${hm(d.ends)}${d.place ? `, en ${d.place}` : ''}. Es gratis y con cupos: reserva el tuyo aquí ${url}`;
 
   // Reservas por horario.
@@ -161,6 +169,7 @@ export async function drive(el, { id }, { clinic }) {
           <h2>Comparte el operativo</h2>
           ${clinic.approved === false ? '<p class="ck-tip small">🕒 El enlace funcionará cuando Kiltrazo apruebe tu municipalidad.</p>' : ''}
           ${d.open === false && upcoming ? '<p class="ck-tip small">Las inscripciones están cerradas: el enlace muestra el operativo, pero no deja reservar.</p>' : ''}
+          ${noticeText ? `<p class="ck-tip small">${noticeText}</p>` : ''}
           <p class="small muted">Los vecinos abren el enlace o escanean el QR, eligen un horario y reservan, con o sin la app Kiltrazo.</p>
           <span class="ck-mono small ck-web-url">${esc(url)}</span>
           <div class="ck-tutor-btns">
