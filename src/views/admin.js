@@ -687,7 +687,7 @@ async function clinicas(panel, { refresh }, muni = false) {
   panel.innerHTML = muni ? `
     <div class="card wide">
       <h2>Municipalidades (${clinics.length})${waiting ? ` <span class="warn">${waiting} por aprobar</span>` : ''}</h2>
-      <p class="small muted">Entran en <span class="ck-mono">${esc(link)}</span>. Mientras no estén aprobadas pueden crear fichas y preparar operativos, pero los vecinos no pueden reservar y no ven el tablero de perdidos y encontrados.</p>
+      <p class="small muted">Entran en <a href="#/municipio" class="ck-mono">${esc(link)}</a>. Mientras no estén aprobadas pueden crear fichas y preparar operativos, pero los vecinos no pueden reservar y no ven el tablero de perdidos y encontrados.</p>
       <div class="admin-clinics">${clinics.map(clinicBox).join('') || '<p class="muted">Todavía no hay municipalidades.</p>'}</div>
     </div>` : `
     <div class="card">
