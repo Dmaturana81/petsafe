@@ -6,12 +6,12 @@ import * as app from '../data-local.js';
 import { kmBetween } from '../geo.js';
 
 const TABLES = ['clinics', 'clinic_members', 'clinic_invites', 'clinic_patients', 'clinic_visits', 'clinic_vaccines',
-  'clinic_files', 'clinic_appointments', 'pet_codes', 'clinic_blobs', 'clinic_transfers', 'landing_banners'];
+  'clinic_files', 'clinic_appointments', 'pet_codes', 'clinic_blobs', 'clinic_transfers', 'landing_banners', 'clinic_drives', 'muni_matches'];
 
 let dbPromise;
 function open() {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open('kiltrazo-clinica', 3);
+    const req = indexedDB.open('kiltrazo-clinica', 4);
     req.onupgradeneeded = () => {
       for (const t of TABLES) if (!req.result.objectStoreNames.contains(t)) req.result.createObjectStore(t, { keyPath: 'id' });
     };
@@ -415,7 +415,8 @@ export async function transferInfo(code) {
   const t = await get('clinic_transfers', code.trim().toUpperCase());
   const cp = t && await get('clinic_patients', t.patientId);
   if (!cp || cp.petId) return null;
-  return { clinic: (await get('clinics', t.clinicId))?.name, name: cp.name, species: cp.species, breed: cp.breed, photo: cp.photo, hasScan: Boolean(cp.scan) };
+  const c = await get('clinics', t.clinicId);
+  return { clinic: c?.name, kind: c?.kind || 'clinica', name: cp.name, species: cp.species, breed: cp.breed, photo: cp.photo, hasScan: Boolean(cp.scan) };
 }
 
 export async function acceptTransfer(code) {
@@ -460,7 +461,7 @@ async function makeSlug(name) {
 }
 
 export async function publicClinic(slug) {
-  const c = (await all('clinics')).find((x) => x.slug === String(slug).toLowerCase() && x.approved !== false);
+  const c = (await all('clinics')).find((x) => x.slug === String(slug).toLowerCase() && x.approved !== false && x.kind !== 'municipio');
   if (!c) return null;
   return {
     id: c.id, name: c.name, slug: c.slug, logo: c.logo || null, address: c.address, phone: c.phone, hours: c.hours || '',
@@ -641,4 +642,126 @@ export const deleteBanner = (id) => del('landing_banners', id);
 export async function bannerClick(id) {
   const b = await get('landing_banners', id);
   if (b) await put('landing_banners', { ...b, clicks: (b.clicks || 0) + 1 });
+}
+
+// ---------- Kiltrazo Municipal ----------
+
+export async function createMunicipality({ name, comuna, address, phone, memberName, role, lat, lng }) {
+  const me = await app.currentUser();
+  if (!comuna?.trim()) throw new Error('Escribe la comuna');
+  if (lat == null || lng == null) throw new Error('Marca la comuna en el mapa');
+  const c = await put('clinics', {
+    id: uuid(), kind: 'municipio', name, comuna: comuna.trim(), address, phone, lat, lng, areaKm: 5, approved: false, createdBy: me.id, createdAt: now(),
+  });
+  await addMember(c.id, me.id, memberName, role === 'recepcion' ? 'recepcion' : 'vet', true);
+  return c.id;
+}
+
+export async function saveMuni(c) {
+  return update('clinics', c.id, {
+    ...(c.logo !== undefined ? { logo: c.logo } : {}),
+    name: c.name, comuna: c.comuna, address: c.address, phone: c.phone, lat: c.lat ?? null, lng: c.lng ?? null, areaKm: c.areaKm ?? 5,
+  });
+}
+
+// Horarios de un operativo, en la hora local de este navegador.
+function driveSlots(d) {
+  const start = new Date(`${d.day}T${d.starts.slice(0, 5)}:00`);
+  const end = new Date(`${d.day}T${d.ends.slice(0, 5)}:00`);
+  const out = [];
+  for (let t = start.getTime(); t + d.slotMinutes * 60000 <= end.getTime(); t += d.slotMinutes * 60000) out.push(new Date(t).toISOString());
+  return out;
+}
+
+const taken = async (driveId) => (await list('clinic_appointments', { driveId })).filter((a) => a.status !== 'cancelada');
+
+export async function publicDrive(id) {
+  const d = await get('clinic_drives', id);
+  const c = d && await get('clinics', d.clinicId);
+  if (!c || c.kind !== 'municipio' || c.approved === false) return null;
+  const booked = await taken(id);
+  return {
+    id: d.id, title: d.title, services: d.services || [], place: d.place, address: d.address, lat: d.lat ?? null, lng: d.lng ?? null,
+    day: d.day, starts: d.starts.slice(0, 5), ends: d.ends.slice(0, 5), notes: d.notes || '', open: d.open !== false && d.day >= new Date().toISOString().slice(0, 10),
+    muni: c.name, comuna: c.comuna, logo: c.logo || null, phone: c.phone,
+    slots: driveSlots(d).map((at) => ({ at, left: Math.max(0, d.perSlot - booked.filter((a) => a.startsAt === at).length) })),
+  };
+}
+
+export async function bookDrive({ driveId, at, tutor = {}, pet = {}, petId = null }) {
+  const info = await publicDrive(driveId);
+  if (!info) throw new Error('Operativo no encontrado');
+  if (!info.open) throw new Error('Las inscripciones de este operativo están cerradas');
+  if (at < now()) throw new Error('Ese horario ya pasó. Elige otro.');
+  const slot = info.slots.find((s) => s.at === at);
+  if (!slot) throw new Error('Elige un horario de la lista');
+  if (!slot.left) throw new Error('Ese horario se llenó. Elige otro.');
+  const d = await get('clinic_drives', driveId);
+  const clinicId = d.clinicId;
+  const last9 = (p) => String(p || '').replace(/\D/g, '').slice(-9);
+  let cp;
+  if (petId) {
+    const me = await app.currentUser();
+    const p = await app.getPet(petId);
+    if (p?.ownerId !== me?.id) throw new Error('Mascota no encontrada');
+    cp = (await list('clinic_patients', { clinicId, petId }))[0] || await get('clinic_patients', await patientFromPet(clinicId, p));
+  } else {
+    const name = (tutor.name || '').trim();
+    const phone = (tutor.phone || '').trim();
+    const petName = (pet.name || '').trim();
+    if (!name || phone.replace(/\D/g, '').length < 8) throw new Error('Escribe tu nombre y tu teléfono');
+    if (!petName) throw new Error('Escribe el nombre de tu mascota');
+    const mine = [];
+    for (const a of await taken(driveId)) {
+      const p = await get('clinic_patients', a.patientId);
+      if (p && last9(p.tutorPhone) === last9(phone)) mine.push(a);
+    }
+    if (mine.length >= 4) throw new Error('Ya tienes 4 cupos en este operativo. Si necesitas más, llama a la municipalidad.');
+    cp = (await list('clinic_patients', { clinicId }))
+      .find((p) => !p.petId && p.name.toLowerCase() === petName.toLowerCase() && last9(p.tutorPhone) === last9(phone));
+    cp ||= await insert('clinic_patients', {
+      clinicId, name: petName, species: pet.species || '', breed: pet.breed || '', sex: '', neutered: false, birthDate: null, chip: '', color: '',
+      allergies: '', notes: '', tutorName: name, tutorPhone: phone, tutorEmail: (tutor.email || '').trim().toLowerCase(), tutorAddress: '',
+      status: 'con_responsable', withoutApp: true,
+    });
+  }
+  if ((await taken(driveId)).some((a) => a.patientId === cp.id)) throw new Error(`${cp.name} ya tiene un cupo en este operativo`);
+  const a = await insert('clinic_appointments', {
+    clinicId, patientId: cp.id, patientName: cp.name, service: 'operativo', startsAt: at, status: 'agendada', place: 'clinica',
+    minutes: d.slotMinutes, driveId, notes: (tutor.notes || '').slice(0, 300), requestedBy: (await app.currentUser().catch(() => null))?.id || null,
+  });
+  return a.id;
+}
+
+export async function muniBoard(clinicId) {
+  const c = await get('clinics', clinicId);
+  if (c?.approved === false) return { pending: true };
+  if (c?.lat == null) return { noArea: true };
+  const near = (p) => kmBetween(c, p) <= (c.areaKm ?? 5);
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  const ago = (iso, days) => Date.now() - new Date(iso) < days * 86400000;
+  const lost = (await app.allPets())
+    .filter((p) => p.status === 'lost' && p.lostLat != null && ago(p.lostAt || now(), 90) && near({ lat: p.lostLat, lng: p.lostLng }))
+    .map((p) => ({ id: p.id, name: p.name, photo: p.photo, species: p.species || '', breed: p.breed || '', at: p.lostAt, lat: r3(p.lostLat), lng: r3(p.lostLng) }));
+  const found = (await app.allFound())
+    .filter((f) => ago(f.createdAt, 30) && near(f))
+    .map((f) => ({ id: f.id, photo: f.photo, species: f.species || '', at: f.createdAt, lat: r3(f.lat), lng: r3(f.lng), reunited: Boolean(f.petId) }));
+  const byDate = (a, b) => String(b.at).localeCompare(String(a.at));
+  // Sin servidor no se comparan caras con las fichas: aquí solo se leen las guardadas.
+  const matches = (await list('muni_matches', { clinicId })).sort(byDate);
+  for (const f of found) f.known = matches.some((m) => m.foundId === f.id);
+  return { matches, lost: lost.sort(byDate), found: found.sort(byDate) };
+}
+
+export async function muniStats() {
+  const out = {};
+  for (const c of (await all('clinics')).filter((x) => x.kind === 'municipio')) {
+    const pats = await list('clinic_patients', { clinicId: c.id });
+    out[c.id] = {
+      patients: pats.filter((p) => !p.removedAt).length, filmed: pats.filter((p) => p.scan).length,
+      drives: (await list('clinic_drives', { clinicId: c.id })).length,
+      bookings: (await list('clinic_appointments', { clinicId: c.id })).filter((a) => a.driveId && a.status !== 'cancelada').length,
+    };
+  }
+  return out;
 }

@@ -266,3 +266,40 @@ export async function deleteBanner(id) {
 export function bannerClick(id) {
   return sb().rpc('banner_click', { p_id: id }).then(() => {}, () => {});
 }
+
+// ---------- Kiltrazo Municipal ----------
+
+export async function createMunicipality({ name, comuna, address, phone, memberName, role, lat, lng }) {
+  return run(sb().rpc('create_municipality', {
+    p_name: name, p_comuna: comuna, p_address: address, p_phone: phone, p_member_name: memberName, p_role: role, p_lat: lat, p_lng: lng,
+  }));
+}
+
+export async function saveMuni({ id, name, comuna, address, phone, logo, lat, lng, areaKm }) {
+  return run(sb().from('clinics').update({
+    name, comuna, address, phone, ...(logo !== undefined ? { logo } : {}), lat, lng, area_km: areaKm,
+  }).eq('id', id));
+}
+
+/** Operativo para el vecino: datos y cupos libres por horario ({ at, left }). */
+export async function publicDrive(id) {
+  const r = await run(sb().rpc('public_drive', { p_id: id }));
+  return r ? camel(r) : null;
+}
+
+// Necesita la sesión (anónima) de la app: la página llama antes a currentUser().
+export async function bookDrive({ driveId, at, tutor = {}, pet = {}, petId = null }) {
+  return run(sb().rpc('book_drive', { p_drive: driveId, p_at: at, p_tutor: tutor, p_pet: pet, p_pet_id: petId }));
+}
+
+/** { lost, found } en el radio de la comuna, o { pending } / { noArea }. */
+export async function muniBoard(clinicId) {
+  const r = camel(await run(sb().rpc('muni_board', { p_clinic: clinicId })));
+  for (const k of ['matches', 'lost', 'found']) if (r[k]) r[k] = r[k].map(camel);
+  return r;
+}
+
+/** Solo el administrador de Kiltrazo: { clinicId: { patients, filmed, drives, bookings } }. */
+export async function muniStats() {
+  return run(sb().rpc('muni_stats'));
+}

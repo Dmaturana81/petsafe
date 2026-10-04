@@ -5,16 +5,16 @@ import { esc, toast } from '../ui.js';
 
 const MAX = 320;
 
-export function logoField(current) {
+export function logoField(current, product = 'Clínica') {
   return `
     <div class="ck-logo-field">
       <span class="ck-logo-label">Logo (opcional)</span>
       <div class="ck-logo-row">
-        <span class="ck-logo-prev">${current ? `<img src="${esc(current)}" alt="Logo">` : '<span>🏥</span>'}</span>
+        <span class="ck-logo-prev">${current ? `<img src="${esc(current)}" alt="Logo">` : `<span>${product === 'Municipal' ? '🏛️' : '🏥'}</span>`}</span>
         <label class="btn small secondary ck-logo-pick">Subir logo<input type="file" accept="image/*" data-logo-file hidden></label>
         <button type="button" class="link small" data-logo-clear ${current ? '' : 'hidden'}>Quitar</button>
       </div>
-      <small class="muted">Se verá tu logo y abajo, pequeño, “by kiltrazo Clínica”.</small>
+      <small class="muted">Se verá tu logo y abajo, pequeño, “by kiltrazo ${product}”.</small>
     </div>`;
 }
 
@@ -56,7 +56,7 @@ async function shrink(file) {
 }
 
 /** Encabezado con el logo de la clínica y "by kiltrazo Clínica" pequeño. */
-export function brandWithLogo(logo, name) {
+export function brandWithLogo(logo, name, product = 'Clínica') {
   return `<span class="ck-own"><img src="${esc(logo)}" alt="${esc(name)}" class="ck-own-logo">
-    <small class="ck-by">by <img src="brand/kiltrazo.svg" alt="kiltrazo"> <b>Clínica</b></small></span>`;
+    <small class="ck-by">by <img src="brand/kiltrazo.svg" alt="kiltrazo"> <b>${product}</b></small></span>`;
 }

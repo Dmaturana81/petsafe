@@ -1,9 +1,10 @@
 // Equipo de la clínica: quién entra, con qué rol, y códigos para invitar.
 
 import { esc, toast, getLocation } from '../../ui.js';
-import { createInvite, removeMember, setClinicAdmin, saveClinic, saveSchedule, saveSpecialties, busyElsewhere } from '../data.js';
+import { createInvite, removeMember, setClinicAdmin, saveClinic, saveSchedule, saveSpecialties, busyElsewhere, saveMuni, isMuni } from '../data.js';
 import { specPick, readSpecs, specTags } from '../specialties.js';
-import { ROLES } from '../ui.js';
+import { roleName } from '../ui.js';
+import { muniDataForm, bindMuniForm } from '../muni.js';
 import { kindPick, bindKind } from './start.js';
 import { logoField, bindLogo } from '../logo.js';
 import { webCard, bindWebCard } from '../web.js';
@@ -11,7 +12,9 @@ import { webCard, bindWebCard } from '../web.js';
 export default function team(el, _params, ctx) {
   const { clinic, team: people, me } = ctx;
   const admin = clinic.isAdmin;
-  const link = `${location.origin}${location.pathname}#/clinica`;
+  const muni = isMuni(clinic);
+  const where = muni ? 'la municipalidad' : 'la clínica';
+  const link = `${location.origin}${location.pathname}#/${muni ? 'municipio' : 'clinica'}`;
   const admins = people.filter((m) => m.isAdmin).length;
 
   el.innerHTML = `
@@ -21,30 +24,30 @@ export default function team(el, _params, ctx) {
         <h2>Personas</h2>
         ${people.map((m) => `
           <div class="ck-member">
-            <span><strong>${esc(m.name || 'Sin nombre')}</strong><small>${ROLES[m.role]}${m.isAdmin ? ' · administra' : ''}${m.userId === me.userId ? ' · tú' : ''}</small>
-              ${m.role === 'vet' ? `<span class="spec-tags">${specTags(m.specialties) || '<small class="muted">Sin especialidades</small>'}
+            <span><strong>${esc(m.name || 'Sin nombre')}</strong><small>${roleName(m.role, clinic)}${m.isAdmin ? ' · administra' : ''}${m.userId === me.userId ? ' · tú' : ''}</small>
+              ${m.role === 'vet' && !muni ? `<span class="spec-tags">${specTags(m.specialties) || '<small class="muted">Sin especialidades</small>'}
                 ${admin || m.userId === me.userId ? `<button class="link small" data-spec-edit="${m.userId}">${m.specialties?.length ? 'Cambiar' : 'Agregar especialidades'}</button>` : ''}</span>` : ''}</span>
             ${admin && m.userId !== me.userId ? `<span class="ck-actions">
               ${m.isAdmin ? `<button class="link small" data-adm="${m.userId}">Quitar administrador</button>`
                 : `<button class="link small" data-adm="${m.userId}" data-on="1">Hacer administrador</button>`}
               <button class="link danger small" data-rm="${m.userId}">Quitar</button></span>` : ''}
           </div>
-          ${m.role === 'vet' && (admin || m.userId === me.userId) ? `<form class="form ck-spec-form" data-spec-form="${m.userId}" hidden>
+          ${m.role === 'vet' && !muni && (admin || m.userId === me.userId) ? `<form class="form ck-spec-form" data-spec-form="${m.userId}" hidden>
             ${specPick(m.specialties || [], `Especialidades de ${esc(m.name || 'este veterinario')}`)}
             <button class="btn primary small">Guardar especialidades</button></form>` : ''}`).join('')}
-        ${admin && admins < 2 && people.length > 1 ? '<p class="ck-tip small">💡 Nombra a otra persona como administradora. Así, si pierdes el acceso, la clínica sigue teniendo quien la maneje.</p>' : ''}
+        ${admin && admins < 2 && people.length > 1 ? `<p class="ck-tip small">💡 Nombra a otra persona como administradora. Así, si pierdes el acceso, ${where} sigue teniendo quien la maneje.</p>` : ''}
       </div>
       <div class="ck-stack">
-        ${webCard(clinic)}
+        ${muni ? '' : webCard(clinic)}
         ${admin ? `
           <div class="card form">
             <h2>Invitar a alguien</h2>
             <p class="muted small">Genera un código y envíaselo. La persona entra a <span class="ck-mono">${esc(link)}</span>, crea su cuenta y toca "Me invitaron". Cada código sirve una vez y dura 7 días.</p>
-            <label>Rol<select id="ck-inv-role"><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select></label>
+            <label>Rol<select id="ck-inv-role"><option value="vet">Veterinario/a</option><option value="recepcion">${roleName('recepcion', clinic)}</option></select></label>
             <button class="btn secondary" id="ck-inv">Generar código</button>
             <p class="ck-code" id="ck-inv-code" hidden></p>
           </div>
-          <form class="card form" id="ck-clinic">
+          ${muni ? muniDataForm(clinic) : `<form class="card form" id="ck-clinic">
             <h2>Datos de la clínica</h2>
             ${kindPick(clinic.onlyHome)}
             <label>Nombre<input name="name" required maxlength="120" value="${esc(clinic.name)}"></label>
@@ -64,18 +67,20 @@ export default function team(el, _params, ctx) {
               <button type="button" class="link small" id="ck-here">📍 <span data-k="clinica">Estoy en la clínica: usar</span><span data-k="domicilio" hidden>Usar</span> mi ubicación</button>
             </div>
             <button class="btn primary small">Guardar</button>
-          </form>` : '<div class="card"><p>Solo quien administra la clínica puede invitar o quitar personas.</p></div>'}
+          </form>`}` : `<div class="card"><p>Solo quien administra ${where} puede invitar o quitar personas.</p></div>`}
         <div class="card">
           <h2>Qué puede hacer cada rol</h2>
           <p class="small"><strong>Veterinario/a:</strong> todo, incluidas las consultas.</p>
-          <p class="small"><strong>Recepción:</strong> agenda, sala de espera, pacientes, vacunas y exámenes. Ve el historial, pero no escribe consultas.</p>
+          <p class="small"><strong>${roleName('recepcion', clinic)}:</strong> ${muni ? 'agenda, operativos, sala de espera, fichas, vacunas y el tablero de perdidos y encontrados.' : 'agenda, sala de espera, pacientes, vacunas y exámenes.'} Ve el historial, pero no escribe consultas.</p>
         </div>
       </div>
     </div>
     <div id="ck-sched"></div>`;
 
-  mountSchedule(el.querySelector('#ck-sched'), ctx);
-  bindWebCard(el, clinic, ctx.user?.email);
+  if (!muni) {
+    mountSchedule(el.querySelector('#ck-sched'), ctx);
+    bindWebCard(el, clinic, ctx.user?.email);
+  }
 
   el.querySelector('#ck-inv')?.addEventListener('click', async (e) => {
     e.target.disabled = true;
@@ -84,7 +89,7 @@ export default function team(el, _params, ctx) {
       const code = await createInvite(clinic.id, role);
       const box = el.querySelector('#ck-inv-code');
       box.hidden = false;
-      box.innerHTML = `<b>${esc(code)}</b><small>para ${ROLES[role].toLowerCase()}</small>`;
+      box.innerHTML = `<b>${esc(code)}</b><small>para ${roleName(role, clinic).toLowerCase()}</small>`;
     } catch (err) {
       toast(err.message, 'bad');
     } finally {
@@ -95,7 +100,7 @@ export default function team(el, _params, ctx) {
   el.querySelectorAll('[data-adm]').forEach((b) => b.addEventListener('click', async () => {
     const m = people.find((x) => x.userId === b.dataset.adm);
     const on = Boolean(b.dataset.on);
-    if (!confirm(on ? `¿${m.name} también administrará la clínica? Podrá invitar y quitar personas.` : `¿Quitarle a ${m.name} la administración?`)) return;
+    if (!confirm(on ? `¿${m.name} también administrará ${where}? Podrá invitar y quitar personas.` : `¿Quitarle a ${m.name} la administración?`)) return;
     try {
       await setClinicAdmin(clinic.id, m.userId, on);
       ctx.refresh();
@@ -121,10 +126,26 @@ export default function team(el, _params, ctx) {
 
   el.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', async () => {
     const m = people.find((x) => x.userId === b.dataset.rm);
-    if (!confirm(`¿Quitar a ${m.name} del equipo? Ya no podrá entrar a la clínica.`)) return;
+    if (!confirm(`¿Quitar a ${m.name} del equipo? Ya no podrá entrar a ${where}.`)) return;
     await removeMember(clinic.id, m.userId);
     ctx.refresh();
   }));
+
+  const muniForm = el.querySelector('#ck-muni');
+  if (muniForm) {
+    const read = bindMuniForm(muniForm, clinic);
+    muniForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await saveMuni({ id: clinic.id, ...read() });
+        toast('Datos guardados', 'ok');
+        ctx.refresh();
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    });
+    return;
+  }
 
   // Ubicación de la clínica para el mapa de urgencias.
   let point = clinic.lat != null && clinic.lng != null ? { lat: clinic.lat, lng: clinic.lng } : null;

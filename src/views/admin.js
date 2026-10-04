@@ -25,7 +25,7 @@ export default async function admin(el, _params, ctx) {
     <div class="admin-head">
       <h1>Administrador</h1>
       <div class="tabs">
-        ${[['alertas', '🚨 Alertas'], ['recon', '🎯 Reconocimiento'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['clinicas', '🏥 Clínicas'], ['publicidad', '📣 Publicidad'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
+        ${[['alertas', '🚨 Alertas'], ['recon', '🎯 Reconocimiento'], ['mensajes', '📢 Mensajes'], ['usuarios', '👥 Usuarios'], ['clinicas', '🏥 Clínicas'], ['municipios', '🏛️ Municipalidades'], ['publicidad', '📣 Publicidad'], ['casos', '💛 Reencuentros'], ['datos', '📋 Datos']]
           .map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}
       </div>
     </div>
@@ -40,7 +40,7 @@ export default async function admin(el, _params, ctx) {
   );
 
   const panel = el.querySelector('#panel');
-  await ({ alertas, recon, mensajes, usuarios, clinicas, publicidad, casos, datos })[tab](panel, ctx);
+  await ({ alertas, recon, mensajes, usuarios, clinicas, municipios, publicidad, casos, datos })[tab](panel, ctx);
 }
 
 // Con Supabase el permiso vive en el servidor: se entra con un correo de
@@ -614,12 +614,19 @@ async function publicidad(panel, { refresh }) {
   });
 }
 
-async function clinicas(panel, { refresh }) {
-  const { allClinics, setClinicAdmin, createInvite, deleteClinic, approveClinic, fileUrls } = await import('../clinic/data.js');
+// Kiltrazo Municipal: mismas acciones que las clínicas (aprobar, equipo, eliminar).
+const municipios = (panel, ctx) => clinicas(panel, ctx, true);
+
+async function clinicas(panel, { refresh }, muni = false) {
+  const { allClinics, setClinicAdmin, createInvite, deleteClinic, approveClinic, fileUrls, muniStats } = await import('../clinic/data.js');
   const { rutOk } = await import('../clinic/review.js');
   const { TERMS_VERSION } = await import('../config.js');
-  const { ROLES } = await import('../clinic/ui.js');
-  const [all, users] = await Promise.all([allClinics(), listUsers()]);
+  const { roleName } = await import('../clinic/ui.js');
+  const [every, users] = await Promise.all([allClinics(), listUsers()]);
+  const all = every.filter((c) => (c.kind === 'municipio') === muni);
+  const stats = muni ? await muniStats().catch(() => ({})) : {};
+  const ROLES = { vet: roleName('vet', { kind: muni ? 'municipio' : 'clinica' }), recepcion: roleName('recepcion', { kind: muni ? 'municipio' : 'clinica' }) };
+  const word = muni ? 'municipalidad' : 'clínica';
   // Las que esperan aprobación van primero.
   const clinics = [...all.filter((c) => c.approved === false), ...all.filter((c) => c.approved !== false)];
   const waiting = clinics.filter((c) => c.approved === false).length;
@@ -629,6 +636,10 @@ async function clinicas(panel, { refresh }) {
   const urls = await fileUrls(docs).catch(() => ({}));
   const DOC_NAMES = { titulo: '🎓 Título', patente: '🏪 Patente' };
   const reviewInfo = (c) => {
+    if (muni) {
+      const st = stats[c.id] || {};
+      return `<p class="admin-review small">Comuna <strong>${esc(c.comuna || '—')}</strong> · ${st.patients || 0} animales en fichas · ${st.filmed || 0} con cara filmada · ${st.drives || 0} operativos · ${st.bookings || 0} reservas${c.approved === false ? '<br><span class="warn">Antes de aprobar, confirma por teléfono o con un correo institucional que quien la creó trabaja en la municipalidad.</span>' : ''}</p>`;
+    }
     const ds = c.docs || [];
     if (!c.rut && !ds.length) return c.approved === false ? '<p class="small warn">Todavía no sube RUT ni título.</p>' : '';
     return `
@@ -641,28 +652,16 @@ async function clinicas(panel, { refresh }) {
         · ${c.termsAt ? `Aceptó los términos el ${new Date(c.termsAt).toLocaleDateString('es-CL')}${c.termsVersion === TERMS_VERSION ? '' : ' (versión anterior)'}` : '<span class="warn">No ha aceptado los términos</span>'}
       </p>`;
   };
-  const link = `${location.origin}${location.pathname}#/clinica`;
-
-  panel.innerHTML = `
-    <div class="card">
-      <h2>Si alguien pierde su clave</h2>
-      <p class="small"><strong>Recuerda su correo:</strong> que toque "Olvidé mi contraseña" al entrar y siga el enlace que le llega.</p>
-      <p class="small"><strong>Perdió también el correo:</strong> quien administra su clínica lo quita del equipo y lo invita de nuevo. Las fichas son de la clínica, no se pierde nada.</p>
-      <p class="small"><strong>La clínica se quedó sin administrador:</strong> nombra a otra persona del equipo con "Hacer administrador", o crea un código para alguien nuevo.</p>
-    </div>
-    <div class="card wide">
-      <h2>Clínicas (${clinics.length})${waiting ? ` <span class="warn">${waiting} por aprobar</span>` : ''}</h2>
-      ${waiting ? '<p class="small muted">Antes de aprobar, abre el título y revisa que el nombre y el RUT calcen con quien está a cargo. Si tiene local, mira la patente. Puedes buscar al veterinario en el Colegio Médico Veterinario (colmevet.cl), aunque no todos son socios. Mientras tanto puede usar su agenda y fichas, pero no aparece en el mapa ni recibe horas desde la app.</p>' : ''}
-      <div class="admin-clinics">${clinics.map((c) => {
+  function clinicBox(c) {
         const admins = c.members.filter((m) => m.isAdmin).length;
         return `
         <div class="admin-clinic ${c.approved === false ? 'pending' : ''}" data-c="${esc(c.id)}">
           <div class="admin-clinic-head">
             <strong>${esc(c.name)}</strong>
-            <small>${esc([c.address, c.phone].filter(Boolean).join(' · ') || 'Sin dirección')}</small>
+            <small>${esc([muni ? c.comuna : c.address, c.phone].filter(Boolean).join(' · ') || 'Sin dirección')}</small>
             ${admins ? '' : '<span class="warn">⚠️ Sin administrador</span>'}
             ${c.approved === false ? `<span class="warn">🕒 Por aprobar</span>
-              <span class="row-actions"><button class="btn small home" data-approve>✓ Aprobar clínica</button></span>` : ''}
+              <span class="row-actions"><button class="btn small home" data-approve>✓ Aprobar ${word}</button></span>` : ''}
           </div>
           ${reviewInfo(c)}
           <ul class="admin-team">${c.members.map((m) => `
@@ -674,15 +673,33 @@ async function clinicas(panel, { refresh }) {
             </li>`).join('') || '<li class="muted">Sin equipo.</li>'}</ul>
           <details class="admin-invite"><summary class="link small">Código para un nuevo administrador</summary>
             <div class="row-actions">
-              <select data-role><option value="vet">Veterinario/a</option><option value="recepcion">Recepción</option></select>
+              <select data-role><option value="vet">${ROLES.vet}</option><option value="recepcion">${ROLES.recepcion}</option></select>
               <button class="btn small secondary" data-inv>Crear código</button>
             </div>
             <p class="invite-code" data-code hidden></p>
             <p class="muted small">La persona entra a ${esc(link)}, crea su cuenta, toca "Me invitaron" y escribe el código. Queda como administradora. Sirve una vez y dura 7 días.</p>
           </details>
-          <button type="button" class="link danger small admin-del" data-delclinic>Eliminar clínica</button>
+          <button type="button" class="link danger small admin-del" data-delclinic>Eliminar ${word}</button>
         </div>`;
-      }).join('') || '<p class="muted">Todavía no hay clínicas.</p>'}</div>
+  }
+  const link = `${location.origin}${location.pathname}#/${muni ? 'municipio' : 'clinica'}`;
+
+  panel.innerHTML = muni ? `
+    <div class="card wide">
+      <h2>Municipalidades (${clinics.length})${waiting ? ` <span class="warn">${waiting} por aprobar</span>` : ''}</h2>
+      <p class="small muted">Entran en <span class="ck-mono">${esc(link)}</span>. Mientras no estén aprobadas pueden crear fichas y preparar operativos, pero los vecinos no pueden reservar y no ven el tablero de perdidos y encontrados.</p>
+      <div class="admin-clinics">${clinics.map(clinicBox).join('') || '<p class="muted">Todavía no hay municipalidades.</p>'}</div>
+    </div>` : `
+    <div class="card">
+      <h2>Si alguien pierde su clave</h2>
+      <p class="small"><strong>Recuerda su correo:</strong> que toque "Olvidé mi contraseña" al entrar y siga el enlace que le llega.</p>
+      <p class="small"><strong>Perdió también el correo:</strong> quien administra su clínica lo quita del equipo y lo invita de nuevo. Las fichas son de la clínica, no se pierde nada.</p>
+      <p class="small"><strong>La clínica se quedó sin administrador:</strong> nombra a otra persona del equipo con "Hacer administrador", o crea un código para alguien nuevo.</p>
+    </div>
+    <div class="card wide">
+      <h2>Clínicas (${clinics.length})${waiting ? ` <span class="warn">${waiting} por aprobar</span>` : ''}</h2>
+      ${waiting ? '<p class="small muted">Antes de aprobar, abre el título y revisa que el nombre y el RUT calcen con quien está a cargo. Si tiene local, mira la patente. Puedes buscar al veterinario en el Colegio Médico Veterinario (colmevet.cl), aunque no todos son socios. Mientras tanto puede usar su agenda y fichas, pero no aparece en el mapa ni recibe horas desde la app.</p>' : ''}
+      <div class="admin-clinics">${clinics.map(clinicBox).join('') || '<p class="muted">Todavía no hay clínicas.</p>'}</div>
     </div>`;
 
   panel.querySelectorAll('[data-adm]').forEach((b) => b.addEventListener('click', async () => {
@@ -712,7 +729,7 @@ async function clinicas(panel, { refresh }) {
   }));
   panel.querySelectorAll('[data-delclinic]').forEach((b) => b.addEventListener('click', async () => {
     const clinic = clinics.find((c) => c.id === b.closest('[data-c]').dataset.c);
-    const typed = prompt(`Se borrará "${clinic.name}" con todo su equipo, pacientes, horas y fichas. No se puede deshacer.\n\nPara confirmar, escribe el nombre de la clínica:`);
+    const typed = prompt(`Se borrará "${clinic.name}" con todo su equipo, pacientes, horas y fichas. No se puede deshacer.\n\nPara confirmar, escribe el nombre de la ${word}:`);
     if (typed == null) return;
     if (typed.trim().toLowerCase() !== clinic.name.trim().toLowerCase()) return toast('El nombre no coincide. No se borró nada.', 'bad');
     try {

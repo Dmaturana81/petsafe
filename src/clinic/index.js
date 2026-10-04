@@ -4,8 +4,8 @@
 
 import './clinic.css';
 import { esc } from '../ui.js';
-import { session, myClinics, members, activeClinicId, setActiveClinic, listAppointments, dueVaccines, runReminders, pendingRequests, today } from './data.js';
-import { ROLES } from './ui.js';
+import { session, myClinics, members, activeClinicId, setActiveClinic, listAppointments, dueVaccines, runReminders, pendingRequests, today, isMuni } from './data.js';
+import { roleName } from './ui.js';
 import { brandWithLogo } from './logo.js';
 import start from './views/start.js';
 import agenda, { waiting } from './views/agenda.js';
@@ -15,6 +15,8 @@ import vaccines from './views/vaccines.js';
 import team from './views/team.js';
 import requests, { homeVisits } from './views/requests.js';
 import review from './review.js';
+import drives, { driveForm, drive } from './views/drives.js';
+import board from './views/board.js';
 
 const ROUTES = [
   ['', agenda, 'agenda'],
@@ -32,6 +34,11 @@ const ROUTES = [
   ['vacunas', vaccines, 'vacunas'],
   ['equipo', team, 'equipo'],
   ['revision', review, 'equipo'],
+  ['operativos', drives, 'operativos'],
+  ['operativos/nuevo', driveForm, 'operativos'],
+  ['operativo/:id', drive, 'operativos'],
+  ['operativo/:id/editar', driveForm, 'operativos'],
+  ['perdidos', board, 'perdidos'],
 ];
 
 function resolve(path) {
@@ -47,13 +54,23 @@ function resolve(path) {
 let remindersRun = false;
 
 export default async function clinicApp(el, path, { refresh }) {
-  const sub = path.replace(/^clinica\/?/, '');
+  // #/municipio: entrada de Kiltrazo Municipal. Por dentro usa las mismas pantallas.
+  const muniEntry = /^municipio(\/|$)/.test(path);
+  const sub = muniEntry ? '' : path.replace(/^clinica\/?/, '');
   const s = await session();
-  if (!s.user) return start(el, { session: s, refresh, pendingCode: pendingLink(sub) });
+  if (!s.user) return start(el, { session: s, refresh, pendingCode: pendingLink(sub), muni: muniEntry });
 
   const clinics = await myClinics(s.user.id);
+  const munis = clinics.filter(isMuni);
+  if (muniEntry) {
+    if (!munis.length) return start(el, { session: s, refresh, muni: true });
+    if (!isMuni(clinics.find((c) => c.id === activeClinicId()))) setActiveClinic(munis[0].id);
+    location.replace('#/clinica');
+    return;
+  }
   if (!clinics.length) return start(el, { session: s, refresh, pendingCode: pendingLink(sub) });
   const clinic = clinics.find((c) => c.id === activeClinicId()) || clinics[0];
+  const muni = isMuni(clinic);
   setActiveClinic(clinic.id);
 
   // Una vez por visita: avisos de próximas vacunas a los tutores (también los
@@ -78,17 +95,15 @@ export default async function clinicApp(el, path, { refresh }) {
   const link = (key, href, label, badge = 0, hot = false) =>
     `<a href="${href}" class="ck-nav ${section === key ? 'on' : ''}">${label}${badge ? `<span class="ck-count ${hot ? 'hot' : ''}">${badge}</span>` : ''}</a>`;
   const later = (label, phase) => `<span class="ck-nav later">${label}<span class="ck-count">Fase ${phase}</span></span>`;
-
-  el.innerHTML = `
-    <div class="ck">
-      <aside class="ck-side">
-        <div class="ck-brand">${clinic.logo ? brandWithLogo(clinic.logo, clinic.name) : '<img src="brand/kiltrazo.svg" alt="Kiltrazo" class="ck-logo"><b>Clínica</b>'}</div>
-        ${clinics.length > 1
-          ? `<select class="ck-clinic-pick" aria-label="Clínica">${clinics.map((c) => `<option value="${c.id}" ${c.id === clinic.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`
-          : `<div class="ck-clinic">${esc(clinic.name)}</div>`}
-        ${clinic.approved === false ? `<p class="ck-review">🕒 Tu clínica está en revisión por Kiltrazo. Ya puedes usar la agenda y las fichas. Cuando la aprobemos, podrás aparecer en el mapa y recibir horas desde la app.${
-          clinic.docs?.some((d) => d.kind === 'titulo') ? '' : clinic.isAdmin ? ' <a href="#/clinica/revision"><b>Sube el RUT y el título del veterinario/a</b></a> para que podamos revisarla.' : ' Falta que quien la administra suba el título del veterinario/a.'}</p>` : ''}
-        <nav class="ck-navs">
+  const navs = muni ? `
+          ${link('agenda', '#/clinica', 'Agenda de hoy', pending, true)}
+          ${link('operativos', '#/clinica/operativos', 'Operativos')}
+          ${link('pacientes', '#/clinica/pacientes', 'Animales')}
+          ${link('perdidos', '#/clinica/perdidos', 'Perdidos y encontrados')}
+          ${link('sala', '#/clinica/sala', 'Sala de espera', inRoom)}
+          ${link('vacunas', '#/clinica/vacunas', 'Vacunas por vencer', due.length)}
+          ${link('equipo', '#/clinica/equipo', 'Equipo')}
+          ${later('Denuncias', 2)}${later('Adopciones', 3)}${later('Estadísticas', 3)}` : `
           ${link('agenda', '#/clinica', 'Agenda de hoy', pending, true)}
           ${link('solicitudes', '#/clinica/solicitudes', 'Solicitudes de hora', asked.length, true)}
           ${clinic.homeVisits ? link('domicilio', '#/clinica/domicilio', 'A domicilio', homeToday) : ''}
@@ -97,11 +112,25 @@ export default async function clinicApp(el, path, { refresh }) {
           ${link('vacunas', '#/clinica/vacunas', 'Vacunas por vencer', due.length)}
           ${link('equipo', '#/clinica/equipo', 'Equipo')}
           <a href="manuales/Manual-Kiltrazo-Clinica.pdf" class="ck-nav" target="_blank" rel="noopener" download>📘 Manual (PDF)</a>
-          ${later('Hospitalización', 2)}${later('Documentos', 2)}${later('Inventario', 3)}${later('Caja y boletas', 4)}${later('Reportes', 5)}
+          ${later('Hospitalización', 2)}${later('Documentos', 2)}${later('Inventario', 3)}${later('Caja y boletas', 4)}${later('Reportes', 5)}`;
+  const reviewNote = muni
+    ? '🕒 Tu municipalidad está en revisión por Kiltrazo. Ya puedes crear fichas y preparar operativos. Cuando la aprobemos, los vecinos podrán reservar cupos y verás los perdidos y encontrados de la comuna.'
+    : `🕒 Tu clínica está en revisión por Kiltrazo. Ya puedes usar la agenda y las fichas. Cuando la aprobemos, podrás aparecer en el mapa y recibir horas desde la app.${
+          clinic.docs?.some((d) => d.kind === 'titulo') ? '' : clinic.isAdmin ? ' <a href="#/clinica/revision"><b>Sube el RUT y el título del veterinario/a</b></a> para que podamos revisarla.' : ' Falta que quien la administra suba el título del veterinario/a.'}`;
+
+  el.innerHTML = `
+    <div class="ck">
+      <aside class="ck-side">
+        <div class="ck-brand">${clinic.logo ? brandWithLogo(clinic.logo, clinic.name, muni ? 'Municipal' : 'Clínica') : `<img src="brand/kiltrazo.svg" alt="Kiltrazo" class="ck-logo"><b>${muni ? 'Municipal' : 'Clínica'}</b>`}</div>
+        ${clinics.length > 1
+          ? `<select class="ck-clinic-pick" aria-label="Clínica">${clinics.map((c) => `<option value="${c.id}" ${c.id === clinic.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`
+          : `<div class="ck-clinic">${esc(clinic.name)}</div>`}
+        ${clinic.approved === false ? `<p class="ck-review">${reviewNote}</p>` : ''}
+        <nav class="ck-navs">${navs}
         </nav>
         <div class="ck-me">
           <strong>${esc(me.name || s.user.email || '')}</strong>
-          <span>${esc(ROLES[me.role] || '')}</span>
+          <span>${esc(roleName(me.role, clinic))}</span>
           <a href="#/">Volver a Kiltrazo</a>
         </div>
       </aside>

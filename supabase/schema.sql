@@ -2276,3 +2276,443 @@ begin
   return g.pet_id;
 end $$;
 grant execute on function public.accept_pet_gift(text) to authenticated;
+
+-- ==========================================================================
+-- ---------- Kiltrazo Municipal ----------
+-- Una municipalidad usa la misma base que Kiltrazo Clínica (equipo, fichas,
+-- vacunas, agenda), marcada con kind = 'municipio'. Suma operativos con cupos
+-- que reservan los vecinos y un tablero de animales perdidos y encontrados en
+-- la comuna. No reemplaza al Registro Nacional de Mascotas: es la gestión local.
+
+alter table public.clinics add column if not exists kind text not null default 'clinica';
+alter table public.clinics drop constraint if exists clinics_kind_check;
+alter table public.clinics add constraint clinics_kind_check check (kind in ('clinica', 'municipio'));
+-- Comuna y radio del tablero de perdidos y encontrados (centro = lat/lng).
+alter table public.clinics add column if not exists comuna text not null default '';
+alter table public.clinics add column if not exists area_km numeric(4, 1) not null default 5;
+alter table public.clinics drop constraint if exists clinics_area_km_check;
+alter table public.clinics add constraint clinics_area_km_check check (area_km between 1 and 30);
+
+-- Estado del animal en la ficha (sobre todo para el municipio).
+alter table public.clinic_patients add column if not exists status text not null default 'con_responsable';
+alter table public.clinic_patients drop constraint if exists clinic_patients_status_check;
+alter table public.clinic_patients add constraint clinic_patients_status_check check (status in (
+  'con_responsable', 'comunitario', 'extraviado', 'encontrado', 'en_recuperacion', 'en_adopcion', 'fallecido'));
+
+-- Solo el administrador de Kiltrazo cambia "aprobada" y el tipo. Un municipio
+-- no aparece en el mapa de clínicas ni recibe horas o urgencias desde ahí.
+create or replace function public.keep_clinic_approval() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.approved is distinct from old.approved and not is_admin() then new.approved := old.approved; end if;
+  if new.kind is distinct from old.kind and not is_admin() then new.kind := old.kind; end if;
+  if new.kind = 'municipio' then
+    new.on_map := false; new.emergencies := false; new.home_visits := false; new.only_home := false;
+  end if;
+  return new;
+end $$;
+
+create or replace function public.tell_admins_new_clinic() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not new.approved then
+    insert into notifications (user_id, type, title, body, url)
+    select u, 'admin',
+      case when new.kind = 'municipio' then 'Municipalidad nueva para aprobar 🏛️' else 'Clínica nueva para aprobar 🏥' end,
+      new.name || coalesce(' · ' || nullif(case when new.kind = 'municipio' then new.comuna else new.address end, ''), ''), '#/admin'
+    from (select user_id as u from admins
+          union select p.id from profiles p join admin_emails e on e.email = lower(p.email)) x;
+  end if;
+  return new;
+end $$;
+
+create or replace function public.admin_approve_clinic(p_clinic uuid, p_ok boolean default true) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare c clinics;
+begin
+  if not is_admin() then raise exception 'Solo administradores'; end if;
+  update clinics set approved = p_ok where id = p_clinic returning * into c;
+  if c.id is null then raise exception 'Clínica no encontrada'; end if;
+  if p_ok then
+    insert into notifications (user_id, type, title, body, url)
+    select m.user_id, 'info', '¡' || c.name || ' fue aprobada! 🎉',
+      case when c.kind = 'municipio'
+        then 'Ya puedes publicar operativos para que los vecinos reserven cupos y ver el tablero de perdidos y encontrados de la comuna.'
+        else 'Ya puedes aparecer en "Clínicas cercanas" y recibir horas desde la app (actívalo en Equipo → Datos de la clínica).' end,
+      case when c.kind = 'municipio' then '#/clinica/operativos' else '#/clinica/equipo' end
+    from clinic_members m where m.clinic_id = c.id;
+  end if;
+  return true;
+end $$;
+
+create or replace function public.create_municipality(
+  p_name text, p_comuna text, p_address text, p_phone text, p_member_name text, p_role text,
+  p_lat double precision, p_lng double precision
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  perform require_account();
+  if coalesce(trim(p_comuna), '') = '' then raise exception 'Escribe la comuna'; end if;
+  if p_lat is null or p_lng is null then raise exception 'Marca la comuna en el mapa'; end if;
+  insert into clinics (name, comuna, address, phone, created_by, kind, lat, lng)
+  values (trim(p_name), trim(p_comuna), coalesce(p_address, ''), coalesce(p_phone, ''), auth.uid(), 'municipio', p_lat, p_lng)
+  returning id into c;
+  insert into clinic_members (clinic_id, user_id, name, role, is_admin)
+  values (c, auth.uid(), coalesce(p_member_name, ''), case when p_role = 'recepcion' then 'recepcion' else 'vet' end, true);
+  return c;
+end $$;
+grant execute on function public.create_municipality(text, text, text, text, text, text, double precision, double precision) to authenticated;
+
+-- Los municipios no tienen página pública de clínica (?c=…).
+create or replace function public.public_clinic(p_slug text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', c.id, 'name', c.name, 'slug', c.slug, 'logo', c.logo, 'address', c.address, 'phone', c.phone,
+    'hours', c.hours, 'home_visits', c.home_visits, 'only_home', c.only_home, 'emergencies', c.emergencies,
+    'lat', case when c.only_home then null else c.lat end, 'lng', case when c.only_home then null else c.lng end,
+    'specialties', to_jsonb(clinic_specialties(c.id)),
+    'vets', coalesce((select jsonb_agg(jsonb_build_object('name', m.name, 'specialties', to_jsonb(m.specialties)) order by m.created_at)
+      from clinic_members m where m.clinic_id = c.id and m.role = 'vet' and m.name <> ''), '[]'::jsonb))
+  from clinics c where c.slug = lower(p_slug) and c.approved and c.kind = 'clinica';
+$$;
+grant execute on function public.public_clinic(text) to anon, authenticated;
+
+-- Quien recibe una mascota sabe si se la entrega un municipio (para ofrecerle
+-- la casilla de ofertas de Kiltrazo, que es aparte del municipio).
+create or replace function public.transfer_info(p_code text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('clinic', c.name, 'name', cp.name, 'species', cp.species, 'breed', cp.breed, 'photo', cp.photo,
+    'has_scan', cp.scan is not null, 'kind', c.kind)
+  from clinic_transfers t join clinic_patients cp on cp.id = t.patient_id join clinics c on c.id = t.clinic_id
+  where t.code = upper(trim(p_code)) and t.created_at > now() - interval '7 days' and cp.pet_id is null
+    and auth.uid() is not null;
+$$;
+
+-- ---------- Operativos (vacunación, esterilización, microchip…) ----------
+-- El municipio publica una jornada con cupos; el vecino reserva desde un
+-- enlace, con o sin la app. Cada reserva queda como una hora en la agenda.
+create table if not exists public.clinic_drives (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics on delete cascade,
+  title text not null check (char_length(title) between 1 and 120),
+  services text[] not null default '{}',
+  place text not null default '',
+  address text not null default '',
+  lat double precision,
+  lng double precision,
+  day date not null,
+  starts time not null,
+  ends time not null,
+  slot_minutes int not null default 20 check (slot_minutes between 5 and 240),
+  per_slot int not null default 2 check (per_slot between 1 and 50),
+  notes text not null default '',
+  open boolean not null default true,
+  created_at timestamptz not null default now(),
+  check (ends > starts)
+);
+create index if not exists clinic_drives_clinic on public.clinic_drives (clinic_id, day);
+alter table public.clinic_drives enable row level security;
+drop policy if exists "equipo de la clínica" on public.clinic_drives;
+create policy "equipo de la clínica" on public.clinic_drives for all
+  using (is_clinic_member(clinic_id)) with check (is_clinic_member(clinic_id));
+
+alter table public.clinic_appointments add column if not exists drive_id uuid references public.clinic_drives on delete set null;
+create index if not exists clinic_appointments_drive on public.clinic_appointments (drive_id, starts_at);
+alter table public.clinic_appointments drop constraint if exists clinic_appointments_service_check;
+alter table public.clinic_appointments add constraint clinic_appointments_service_check
+  check (service in ('consulta', 'control', 'vacuna', 'cirugia', 'peluqueria', 'otro', 'urgencia', 'operativo'));
+
+create or replace function public.service_name(s text) returns text
+language sql immutable as $$
+  select case s when 'consulta' then 'Consulta' when 'control' then 'Control' when 'vacuna' then 'Vacuna'
+    when 'cirugia' then 'Cirugía' when 'peluqueria' then 'Peluquería' when 'urgencia' then 'Urgencia'
+    when 'operativo' then 'Operativo' else 'Hora' end;
+$$;
+
+-- Horarios de un operativo (hora de Chile).
+create or replace function public.drive_slots(d clinic_drives) returns setof timestamptz
+language sql stable as $$
+  select ((d.day + d.starts) + make_interval(mins => n * d.slot_minutes)) at time zone 'America/Santiago'
+  from generate_series(0, floor(extract(epoch from (d.ends - d.starts)) / 60 / d.slot_minutes)::int - 1) n;
+$$;
+
+-- Lo que ve el vecino: datos del operativo y cupos libres por horario.
+create or replace function public.public_drive(p_id uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', d.id, 'title', d.title, 'services', to_jsonb(d.services), 'place', d.place,
+    'address', d.address, 'lat', d.lat, 'lng', d.lng, 'day', d.day, 'notes', d.notes,
+    'starts', to_char(d.starts, 'HH24:MI'), 'ends', to_char(d.ends, 'HH24:MI'),
+    'open', d.open and d.day >= (now() at time zone 'America/Santiago')::date,
+    'muni', c.name, 'comuna', c.comuna, 'logo', c.logo, 'phone', c.phone,
+    'slots', coalesce((select jsonb_agg(jsonb_build_object('at', s.at, 'left', greatest(0, d.per_slot - (
+        select count(*) from clinic_appointments a where a.drive_id = d.id and a.starts_at = s.at and a.status <> 'cancelada')))
+        order by s.at)
+      from drive_slots(d) as s(at)), '[]'::jsonb))
+  from clinic_drives d join clinics c on c.id = d.clinic_id
+  where d.id = p_id and c.kind = 'municipio' and c.approved;
+$$;
+grant execute on function public.public_drive(uuid) to anon, authenticated;
+
+-- El vecino reserva un cupo: con su mascota de Kiltrazo (p_pet_id) o dejando
+-- sus datos. Queda agendado de inmediato (los cupos ya los definió el municipio).
+create or replace function public.book_drive(
+  p_drive uuid, p_at timestamptz, p_tutor jsonb, p_pet jsonb, p_pet_id uuid default null
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare d clinic_drives; c clinics; cp_id uuid; pname text; nm text; ph text; a_id uuid;
+begin
+  select * into d from clinic_drives where id = p_drive;
+  select * into c from clinics where id = d.clinic_id;
+  if d.id is null or c.kind <> 'municipio' or not c.approved then raise exception 'Operativo no encontrado'; end if;
+  if not d.open or d.day < (now() at time zone 'America/Santiago')::date then
+    raise exception 'Las inscripciones de este operativo están cerradas';
+  end if;
+  if p_at < now() then raise exception 'Ese horario ya pasó. Elige otro.'; end if;
+  if not exists (select 1 from drive_slots(d) as s(at) where s.at = p_at) then raise exception 'Elige un horario de la lista'; end if;
+  -- Una reserva a la vez por operativo, para no pasarse de los cupos.
+  perform pg_advisory_xact_lock(hashtext(p_drive::text));
+  if (select count(*) from clinic_appointments where drive_id = d.id and starts_at = p_at and status <> 'cancelada') >= d.per_slot then
+    raise exception 'Ese horario se llenó. Elige otro.';
+  end if;
+
+  if p_pet_id is not null then
+    if not exists (select 1 from pets where id = p_pet_id and owner_id = auth.uid()) then raise exception 'Mascota no encontrada'; end if;
+    select id into cp_id from clinic_patients where clinic_id = c.id and pet_id = p_pet_id limit 1;
+    if cp_id is null then cp_id := patient_from_pet(c.id, p_pet_id); end if;
+    update clinic_patients set removed_at = null where id = cp_id;
+  else
+    nm := left(trim(coalesce(p_tutor ->> 'name', '')), 120);
+    ph := left(trim(coalesce(p_tutor ->> 'phone', '')), 30);
+    pname := left(trim(coalesce(p_pet ->> 'name', '')), 80);
+    if nm = '' or length(regexp_replace(ph, '\D', '', 'g')) < 8 then raise exception 'Escribe tu nombre y tu teléfono'; end if;
+    if pname = '' then raise exception 'Escribe el nombre de tu mascota'; end if;
+    if (select count(*) from clinic_appointments a join clinic_patients p on p.id = a.patient_id
+        where a.drive_id = d.id and a.status <> 'cancelada'
+          and right(regexp_replace(p.tutor_phone, '\D', '', 'g'), 9) = right(regexp_replace(ph, '\D', '', 'g'), 9)) >= 4 then
+      raise exception 'Ya tienes 4 cupos en este operativo. Si necesitas más, llama a la municipalidad.';
+    end if;
+    select id into cp_id from clinic_patients
+    where clinic_id = c.id and pet_id is null and lower(name) = lower(pname)
+      and right(regexp_replace(tutor_phone, '\D', '', 'g'), 9) = right(regexp_replace(ph, '\D', '', 'g'), 9)
+    limit 1;
+    if cp_id is null then
+      insert into clinic_patients (clinic_id, name, species, breed, tutor_name, tutor_phone, tutor_email, without_app)
+      values (c.id, pname, case when p_pet ->> 'species' in ('perro', 'gato', 'otro') then p_pet ->> 'species' else '' end,
+        left(coalesce(p_pet ->> 'breed', ''), 80), nm, ph, lower(left(trim(coalesce(p_tutor ->> 'email', '')), 120)), true)
+      returning id into cp_id;
+    else
+      update clinic_patients set removed_at = null where id = cp_id;
+    end if;
+  end if;
+
+  select name into pname from clinic_patients where id = cp_id;
+  if exists (select 1 from clinic_appointments where drive_id = d.id and patient_id = cp_id and status <> 'cancelada') then
+    raise exception '% ya tiene un cupo en este operativo', pname;
+  end if;
+  insert into clinic_appointments (clinic_id, patient_id, patient_name, service, starts_at, minutes, status, place, drive_id, notes, requested_by)
+  values (c.id, cp_id, pname, 'operativo', p_at, d.slot_minutes, 'agendada', 'clinica', d.id,
+    left(coalesce(p_tutor ->> 'notes', ''), 300), auth.uid())
+  returning id into a_id;
+  return a_id;
+end $$;
+grant execute on function public.book_drive(uuid, timestamptz, jsonb, jsonb, uuid) to authenticated;
+
+-- ---------- Tablero de perdidos y encontrados de la comuna ----------
+-- Lo mismo que ya ven los vecinos en los avisos (foto, nombre, zona a ~100 m),
+-- dentro del radio de la comuna. Nunca datos del dueño ni de quien la encontró.
+create or replace function public.muni_board(p_clinic uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare c clinics;
+begin
+  select * into c from clinics where id = p_clinic;
+  if c.id is null or not is_clinic_member(c.id) or c.kind <> 'municipio' then raise exception 'No eres parte de esta municipalidad'; end if;
+  if not c.approved then return jsonb_build_object('pending', true); end if;
+  if c.lat is null or c.lng is null then return jsonb_build_object('no_area', true); end if;
+  return jsonb_build_object(
+    'lost', coalesce((select jsonb_agg(x order by x ->> 'at' desc) from (
+      select jsonb_build_object('id', p.id, 'name', p.name, 'photo', p.photo, 'species', p.species, 'breed', p.breed,
+        'at', p.lost_at, 'lat', round(p.lost_lat::numeric, 3), 'lng', round(p.lost_lng::numeric, 3)) as x
+      from pets p
+      where p.status = 'lost' and p.lost_lat is not null and coalesce(p.lost_at, now()) > now() - interval '90 days'
+        and km_between(c.lat, c.lng, p.lost_lat, p.lost_lng) <= c.area_km
+      limit 200) l), '[]'::jsonb),
+    'found', coalesce((select jsonb_agg(x order by x ->> 'at' desc) from (
+      select jsonb_build_object('id', f.id, 'photo', f.photo, 'species', f.species, 'at', f.created_at,
+        'lat', round(f.lat::numeric, 3), 'lng', round(f.lng::numeric, 3), 'reunited', f.pet_id is not null) as x
+      from found_reports f
+      where f.created_at > now() - interval '30 days' and km_between(c.lat, c.lng, f.lat, f.lng) <= c.area_km
+      limit 200) r), '[]'::jsonb));
+end $$;
+grant execute on function public.muni_board(uuid) to authenticated;
+
+-- ---------- Las caras que filma el municipio también encuentran perdidos ----------
+-- Cuando el municipio filma la cara de un animal (operativo, rescate), esa
+-- huella entra a la búsqueda: si un vecino escanea un animal en la calle y se
+-- parece a uno de sus fichas, al equipo municipal le llega el aviso con el
+-- contacto de quien lo encontró. Si el animal ya está en la app de su
+-- responsable, lo busca la app como siempre (no se duplica).
+create table if not exists public.muni_samples (
+  id bigint generated always as identity primary key,
+  patient_id uuid not null references public.clinic_patients on delete cascade,
+  kind text not null default 'face',
+  dino extensions.vector(384),
+  mobilenet extensions.vector(1280),
+  basic extensions.vector(192) not null
+);
+create index if not exists muni_samples_patient on public.muni_samples (patient_id);
+alter table public.muni_samples enable row level security; -- nadie las lee directo
+
+create table if not exists public.muni_matches (
+  found_id uuid not null references public.found_reports on delete cascade,
+  patient_id uuid not null references public.clinic_patients on delete cascade,
+  clinic_id uuid not null references public.clinics on delete cascade,
+  score real,
+  created_at timestamptz not null default now(),
+  primary key (found_id, patient_id)
+);
+alter table public.muni_matches enable row level security;
+drop policy if exists "equipo municipal ve sus coincidencias" on public.muni_matches;
+create policy "equipo municipal ve sus coincidencias" on public.muni_matches for select using (is_clinic_member(clinic_id));
+
+-- Parecido de un aviso de "encontré" con cada animal filmado por municipios.
+create or replace function public.muni_scores(p_found uuid, p_patient uuid default null)
+returns table (patient_id uuid, score real, model text, nose real)
+language sql stable security definer set search_path = public, extensions as $$
+  with s as (
+    select ms.patient_id,
+      max(1 - (fs.dino <=> ms.dino)) filter (where fs.kind = 'face') as d,
+      max(1 - (fs.mobilenet <=> ms.mobilenet)) filter (where fs.kind = 'face') as m,
+      max(1 - (fs.basic <=> ms.basic)) filter (where fs.kind = 'face') as b,
+      max(1 - (fs.dino <=> ms.dino)) filter (where fs.kind = 'nose') as nd,
+      max(1 - (fs.mobilenet <=> ms.mobilenet)) filter (where fs.kind = 'nose') as nm
+    from found_samples fs join muni_samples ms on ms.kind = fs.kind
+    where fs.found_id = p_found and (p_patient is null or ms.patient_id = p_patient)
+    group by ms.patient_id
+  )
+  select patient_id, coalesce(d, m, b)::real,
+    case when d is not null then 'dino' when m is not null then 'mobilenet' else 'basic' end,
+    (case when d is not null then nd when m is not null then nm end)::real
+  from s where coalesce(d, m, b) is not null;
+$$;
+revoke execute on function public.muni_scores(uuid, uuid) from public, anon, authenticated;
+
+-- Busca el animal municipal más parecido a un aviso (o solo p_patient) y, si
+-- coincide, avisa al equipo. Mismo criterio que la app: si la ficha está como
+-- extraviado basta el umbral normal; si no, se pide el umbral alto.
+create or replace function public.muni_check(p_found uuid, p_patient uuid default null) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+declare f found_reports; cp clinic_patients; cp_id uuid; sc real;
+begin
+  select * into f from found_reports where id = p_found;
+  if f.id is null or f.status <> 'open' or f.pet_id is not null or f.created_at < now() - interval '30 days' then return false; end if;
+  select p.id, s.score into cp_id, sc
+  from muni_scores(p_found, p_patient) s join clinic_patients p on p.id = s.patient_id
+  where p.pet_id is null and p.status <> 'fallecido' and same_species(p.species, f.species)
+    and not exists (select 1 from muni_matches mm where mm.found_id = p_found and mm.patient_id = p.id)
+    and case when p.status = 'extraviado' then is_pet_match(s.score, s.model, s.nose)
+      else s.model <> 'basic' and s.score >= unlost_threshold(s.model) end
+  order by s.score desc limit 1;
+  if cp_id is null then return false; end if;
+  select * into cp from clinic_patients where id = cp_id;
+  insert into muni_matches (found_id, patient_id, clinic_id, score) values (p_found, cp.id, cp.clinic_id, sc);
+  insert into notifications (user_id, type, title, body, url)
+  select m.user_id, 'match', '🐾 Un vecino encontró a ' || cp.name,
+    'Es un animal de tus fichas. Toca para ver dónde está y contactar a quien lo encontró.', '#/clinica/perdidos'
+  from clinic_members m where m.clinic_id = cp.clinic_id;
+  return true;
+end $$;
+revoke execute on function public.muni_check(uuid, uuid) from public, anon, authenticated;
+
+-- Huellas al día con la ficha (solo municipios, solo si aún no está en la app).
+create or replace function public.muni_patient_samples() returns trigger
+language plpgsql security definer set search_path = public, extensions as $$
+declare f uuid;
+begin
+  if tg_op = 'UPDATE' and new.scan is not distinct from old.scan and new.pet_id is not distinct from old.pet_id
+     and new.status is not distinct from old.status then return null; end if;
+  if tg_op = 'INSERT' or new.scan is distinct from old.scan or new.pet_id is distinct from old.pet_id then
+    delete from muni_samples where patient_id = new.id;
+    if new.scan is not null and new.pet_id is null and exists (select 1 from clinics where id = new.clinic_id and kind = 'municipio') then
+      insert into muni_samples (patient_id, kind, dino, mobilenet, basic)
+      select new.id, s.kind, s.dino, s.mobilenet, s.basic from bio_samples(new.scan) s;
+    end if;
+  end if;
+  -- Recién filmado o marcado como extraviado: se revisan los avisos abiertos de los últimos 30 días.
+  if exists (select 1 from muni_samples where patient_id = new.id) then
+    for f in select id from found_reports where status = 'open' and pet_id is null and created_at > now() - interval '30 days'
+      and same_species(species, new.species) order by created_at desc limit 500 loop
+      perform muni_check(f, new.id);
+    end loop;
+  end if;
+  return null;
+end $$;
+drop trigger if exists muni_patient_samples on public.clinic_patients;
+create trigger muni_patient_samples after insert or update on public.clinic_patients
+  for each row execute function public.muni_patient_samples();
+
+-- Aviso nuevo de "encontré" sin dueño en la app: se compara con los municipios.
+-- report_found guarda best_score después de guardar las huellas del aviso.
+create or replace function public.muni_found_check() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.pet_id is null and old.best_score is null and old.match_kind is null then perform muni_check(new.id); end if;
+  return null;
+end $$;
+drop trigger if exists muni_found_check on public.found_reports;
+create trigger muni_found_check after update of best_score on public.found_reports
+  for each row execute function public.muni_found_check();
+
+-- El tablero suma lo reconocido de las fichas, con el contacto de quien lo encontró.
+create or replace function public.muni_board(p_clinic uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare c clinics;
+begin
+  select * into c from clinics where id = p_clinic;
+  if c.id is null or not is_clinic_member(c.id) or c.kind <> 'municipio' then raise exception 'No eres parte de esta municipalidad'; end if;
+  if not c.approved then return jsonb_build_object('pending', true); end if;
+  if c.lat is null or c.lng is null then return jsonb_build_object('no_area', true); end if;
+  return jsonb_build_object(
+    'matches', coalesce((select jsonb_agg(x order by x ->> 'at' desc) from (
+      select jsonb_build_object('found_id', f.id, 'patient_id', p.id, 'name', p.name, 'pet_photo', p.photo, 'photo', f.photo,
+        'species', f.species, 'at', f.created_at, 'lat', round(f.lat::numeric, 4), 'lng', round(f.lng::numeric, 4),
+        'finder_name', f.finder_name, 'finder_phone', f.finder_phone, 'open', f.status = 'open') as x
+      from muni_matches mm join found_reports f on f.id = mm.found_id join clinic_patients p on p.id = mm.patient_id
+      where mm.clinic_id = c.id and mm.created_at > now() - interval '60 days'
+      limit 100) m), '[]'::jsonb),
+    'lost', coalesce((select jsonb_agg(x order by x ->> 'at' desc) from (
+      select jsonb_build_object('id', p.id, 'name', p.name, 'photo', p.photo, 'species', p.species, 'breed', p.breed,
+        'at', p.lost_at, 'lat', round(p.lost_lat::numeric, 3), 'lng', round(p.lost_lng::numeric, 3)) as x
+      from pets p
+      where p.status = 'lost' and p.lost_lat is not null and coalesce(p.lost_at, now()) > now() - interval '90 days'
+        and km_between(c.lat, c.lng, p.lost_lat, p.lost_lng) <= c.area_km
+      limit 200) l), '[]'::jsonb),
+    'found', coalesce((select jsonb_agg(x order by x ->> 'at' desc) from (
+      select jsonb_build_object('id', f.id, 'photo', f.photo, 'species', f.species, 'at', f.created_at,
+        'lat', round(f.lat::numeric, 3), 'lng', round(f.lng::numeric, 3),
+        'reunited', f.pet_id is not null, 'known', exists (select 1 from muni_matches mm where mm.found_id = f.id)) as x
+      from found_reports f
+      where f.created_at > now() - interval '30 days' and km_between(c.lat, c.lng, f.lat, f.lng) <= c.area_km
+      limit 200) r), '[]'::jsonb));
+end $$;
+
+-- Para el administrador de Kiltrazo: cuánto usa cada municipalidad.
+create or replace function public.muni_stats() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Solo el administrador'; end if;
+  return coalesce((select jsonb_object_agg(c.id, jsonb_build_object(
+    'patients', (select count(*) from clinic_patients p where p.clinic_id = c.id and p.removed_at is null),
+    'filmed', (select count(*) from clinic_patients p where p.clinic_id = c.id and p.scan is not null),
+    'drives', (select count(*) from clinic_drives d where d.clinic_id = c.id),
+    'bookings', (select count(*) from clinic_appointments a where a.clinic_id = c.id and a.drive_id is not null and a.status <> 'cancelada')))
+    from clinics c where c.kind = 'municipio'), '{}'::jsonb);
+end $$;
+grant execute on function public.muni_stats() to authenticated;
+
+-- ---------- Registro Nacional de Mascotas (registratumascota.cl) ----------
+-- El municipio sigue inscribiendo en el registro nacional; Kiltrazo le deja los
+-- datos listos para copiar y anota cuándo quedó inscrito. RUT del responsable:
+-- lo pide el registro nacional.
+alter table public.clinic_patients add column if not exists tutor_rut text not null default '';
+alter table public.clinic_patients add column if not exists rnm_at date;
+alter table public.clinic_patients add column if not exists rnm_number text not null default '';

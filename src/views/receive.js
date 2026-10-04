@@ -1,9 +1,11 @@
 // "#/recibir/CODIGO": la veterinaria le pasa al tutor la ficha de su mascota.
 // El tutor la registra (escaneando su cara) o elige una que ya tenía.
 
-import { myPets } from '../data.js';
+import { myPets, saveUser } from '../data.js';
 import { esc, toast, go } from '../ui.js';
 import { SPECIES } from '../breeds.js';
+import { promosBox } from './privacy.js';
+import { PROMOS_VERSION } from '../config.js';
 
 export const TRANSFER_KEY = 'kiltrazo-transfer';
 
@@ -18,12 +20,23 @@ export default async function receive(el, { code }, { user }) {
     return;
   }
 
+  // Mascota entregada por una municipalidad: la casilla de ofertas de Kiltrazo
+  // (aparte del municipio, desmarcada), igual que al crear el perfil.
+  const askPromos = info.kind === 'municipio' && user && !user.promos;
+  const savePromos = async () => {
+    const box = el.querySelector('[name="promos"]');
+    if (box?.checked) await saveUser({ ...user, promos: true, promosVersion: PROMOS_VERSION }).catch((err) => console.warn('Ofertas', err));
+  };
+
   el.innerHTML = `
     <div class="card receive">
       ${info.photo ? `<img class="receive-photo" src="${esc(info.photo)}" alt="">` : '<span class="receive-photo">🐾</span>'}
       <h1>${esc(info.clinic)} te envía a ${esc(info.name)}</h1>
       <p class="muted">${esc([SPECIES[info.species], info.breed].filter(Boolean).join(' · '))}</p>
-      <p>Al agregarla a tu Kiltrazo verás sus vacunas, te avisaremos antes de cada dosis y podrás pedir hora con ${esc(info.clinic)}.</p>
+      <p>${info.kind === 'municipio'
+        ? 'Al agregarla a tu Kiltrazo verás sus vacunas y te avisaremos antes de cada dosis. Si algún día se pierde, cualquier vecino la reconoce por su cara.'
+        : `Al agregarla a tu Kiltrazo verás sus vacunas, te avisaremos antes de cada dosis y podrás pedir hora con ${esc(info.clinic)}.`}</p>
+      ${askPromos ? `<div class="receive-promos">${promosBox()}<p class="small muted">Esta casilla es de Kiltrazo, no de ${esc(info.clinic)}.</p></div>` : ''}
       <button class="btn primary big" data-new>Agregar a ${esc(info.name)}</button>
       <p class="small muted">${info.hasScan ? `${esc(info.clinic)} ya filmó su cara: si algún día se pierde, Kiltrazo podrá reconocerla.` : 'Te pediremos filmar su cara, para encontrarla si algún día se pierde.'}</p>
     </div>
@@ -37,6 +50,7 @@ export default async function receive(el, { code }, { user }) {
       </div>` : ''}`;
 
   el.querySelector('[data-new]').addEventListener('click', async (e) => {
+    await savePromos();
     if (info.hasScan) {
       e.target.disabled = true;
       try {
@@ -57,6 +71,7 @@ export default async function receive(el, { code }, { user }) {
     const pet = pets.find((p) => p.id === b.dataset.pet);
     if (!confirm(`¿Unir a ${pet.name} con la ficha que envió ${info.clinic}?`)) return;
     try {
+      await savePromos();
       await claimTransfer(code, pet.id);
       forget();
       toast(`¡Listo! ${pet.name} ya está unida a ${info.clinic} 🎉`, 'ok');

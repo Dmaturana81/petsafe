@@ -5,10 +5,11 @@ import { esc, toast, go } from '../../ui.js';
 import { createTransferCode } from '../data.js';
 import {
   getPatient, savePatient, listVisits, saveVisit, listVaccines, saveVaccine, deleteVaccine, currentDoses, listFiles, uploadFile,
-  deleteFile, fileUrls, listAppointments, saveAppointment, today, localDay,
+  deleteFile, fileUrls, listAppointments, saveAppointment, today, localDay, isMuni,
 } from '../data.js';
-import { avatar, speciesLine, sexLine, age, fmtDate, num, dueTone, dueLabel, waLink, lineChart, KINDS } from '../ui.js';
+import { avatar, speciesLine, sexLine, age, fmtDate, num, dueTone, dueLabel, waLink, lineChart, KINDS, statusTag } from '../ui.js';
 import { TEMPLATES, VACCINE_NAMES, NEXT_MONTHS } from '../templates.js';
+import { rnmCard, bindRnm } from '../rnm.js';
 
 const TABS = { consulta: 'Consulta', historial: 'Historial', vacunas: 'Vacunas', examenes: 'Exámenes', signos: 'Peso y signos' };
 
@@ -28,6 +29,7 @@ export default async function patient(el, { id, tab }, ctx) {
   const nextDose = doses[0];
   const lastWeight = visits.find((v) => v.weight != null);
   const wa = waLink(p.tutorPhone);
+  const muni = isMuni(ctx.clinic);
 
   el.innerHTML = `
     <div class="ck-patient">
@@ -40,14 +42,15 @@ export default async function patient(el, { id, tab }, ctx) {
               p.chip ? `Chip <b class="ck-mono">${esc(p.chip)}</b>` : ''].filter(Boolean).map((x) => `<span>${x}</span>`).join('')}
           </div>
           <div class="ck-tags">
+            ${muni ? statusTag(p.status || 'con_responsable') : ''}
             ${p.allergies ? `<span class="ck-tag red">Alergia: ${esc(p.allergies)}</span>` : ''}
             ${nextDose ? `<span class="ck-tag ${dueTone(nextDose.nextDue, t)}">${esc(nextDose.name)} ${dueLabel(nextDose.nextDue, t)}</span>` : ''}
             ${p.petId ? '<span class="ck-tag green">Vinculada a Kiltrazo</span>' : ''}
           </div>
         </div>
         <div class="ck-tutor">
-          <strong>${esc(p.tutorName || 'Sin tutor')}</strong>
-          <span>Tutor/a</span>
+          <strong>${esc(p.tutorName || (muni ? 'Sin responsable' : 'Sin tutor'))}</strong>
+          <span>${muni ? 'Responsable' : 'Tutor/a'}</span>
           ${p.tutorPhone ? `<span class="ck-mono">${esc(p.tutorPhone)}</span>` : ''}
           <span class="ck-tutor-btns">
             ${wa ? `<a class="btn small whatsapp" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
@@ -63,6 +66,7 @@ export default async function patient(el, { id, tab }, ctx) {
       <div class="ck-pgrid">
         <div class="ck-pcol" id="ck-tab"></div>
         <aside class="ck-pside">
+          ${muni ? rnmCard(p) : ''}
           <div class="card">
             <h3>Peso</h3>
             ${lineChart([...visits].reverse().map((v) => ({ date: v.visitedAt, value: v.weight })), { unit: 'kg' })}
@@ -77,21 +81,23 @@ export default async function patient(el, { id, tab }, ctx) {
             ${p.tutorUser ? '<p class="muted small">El tutor recibe un aviso en su app Kiltrazo 7 días antes.</p>' : ''}
           </div>
           ${!p.petId ? `<div class="card ck-transfer">
-            <h3>Pasar a la app del tutor</h3>
-            <p class="small muted">El tutor recibe a ${esc(p.name)} en su Kiltrazo con sus datos, y desde ahí ve sus vacunas y pide horas.</p>
+            <h3>${muni ? 'Entregar en la app del responsable' : 'Pasar a la app del tutor'}</h3>
+            <p class="small muted">${muni ? `Al entregarlo o darlo en adopción, el nuevo responsable recibe a ${esc(p.name)} en su Kiltrazo con sus datos y sus vacunas. Si se pierde, Kiltrazo lo reconoce por su cara.` : `El tutor recibe a ${esc(p.name)} en su Kiltrazo con sus datos, y desde ahí ve sus vacunas y pide horas.`}</p>
             ${p.scan
-              ? '<p class="small ck-scan-ok">✓ Cara filmada: el tutor no tendrá que filmarla. <button class="link small" id="ck-scan">Filmar de nuevo</button></p>'
-              : `<p class="small"><b>1.</b> Filma su cara (así el tutor solo toca "Agregar").</p>
+              ? `<p class="small ck-scan-ok">✓ Cara filmada: ${muni ? 'el responsable' : 'el tutor'} no tendrá que filmarla.${muni ? ' Ya sirve para reconocerlo si se pierde.' : ''} <button class="link small" id="ck-scan">Filmar de nuevo</button></p>`
+              : `<p class="small"><b>1.</b> Filma su cara (así ${muni ? 'el responsable' : 'el tutor'} solo toca "Agregar"${muni ? ', y desde ya sirve para reconocerlo si se pierde' : ''}).</p>
                  <button class="btn small ghost" id="ck-scan">📷 Filmar su cara</button>
-                 <p class="small"><b>2.</b> Envía el enlace al tutor.</p>`}
+                 <p class="small"><b>2.</b> Envía el enlace ${muni ? 'al responsable' : 'al tutor'}.</p>`}
             <div id="ck-scanner" hidden></div>
-            <button class="btn small secondary" id="ck-transfer">Crear enlace para el tutor</button>
+            <button class="btn small secondary" id="ck-transfer">Crear enlace para ${muni ? 'el responsable' : 'el tutor'}</button>
             <div id="ck-transfer-out" hidden></div>
           </div>` : ''}
           ${p.notes ? `<div class="card"><h3>Notas</h3><p class="ck-pre small">${esc(p.notes)}</p></div>` : ''}
         </aside>
       </div>
     </div>`;
+
+  bindRnm(el, p, ctx.refresh);
 
   // Escaneo de la cara en la clínica (mismo que la app), guardado en la ficha.
   el.querySelector('#ck-scan')?.addEventListener('click', async (e) => {
@@ -119,7 +125,9 @@ export default async function patient(el, { id, tab }, ctx) {
     try {
       const code = await createTransferCode(p.id);
       const url = `${location.origin}${location.pathname}#/recibir/${code}`;
-      const msg = `Hola${p.tutorName ? ` ${p.tutorName.split(' ')[0]}` : ''}, te dejamos la ficha de ${p.name} en Kiltrazo, la app gratis donde verás sus vacunas y podrás pedir hora con nosotros: ${url}`;
+      const msg = muni
+        ? `Hola${p.tutorName ? ` ${p.tutorName.split(' ')[0]}` : ''}, te dejamos la ficha de ${p.name} en Kiltrazo, la app gratis donde verás sus vacunas y que lo reconoce por su cara si algún día se pierde: ${url}`
+        : `Hola${p.tutorName ? ` ${p.tutorName.split(' ')[0]}` : ''}, te dejamos la ficha de ${p.name} en Kiltrazo, la app gratis donde verás sus vacunas y podrás pedir hora con nosotros: ${url}`;
       const wa = waLink(p.tutorPhone);
       const out = el.querySelector('#ck-transfer-out');
       const QR = (await import('qrcode')).default;
