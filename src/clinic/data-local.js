@@ -4,14 +4,15 @@
 
 import * as app from '../data-local.js';
 import { kmBetween } from '../geo.js';
+import { comunaKey } from '../comunas.js';
 
 const TABLES = ['clinics', 'clinic_members', 'clinic_invites', 'clinic_patients', 'clinic_visits', 'clinic_vaccines',
-  'clinic_files', 'clinic_appointments', 'pet_codes', 'clinic_blobs', 'clinic_transfers', 'landing_banners', 'clinic_drives', 'muni_matches'];
+  'clinic_files', 'clinic_appointments', 'pet_codes', 'clinic_blobs', 'clinic_transfers', 'landing_banners', 'clinic_drives', 'muni_matches', 'drive_notices'];
 
 let dbPromise;
 function open() {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open('kiltrazo-clinica', 4);
+    const req = indexedDB.open('kiltrazo-clinica', 5);
     req.onupgradeneeded = () => {
       for (const t of TABLES) if (!req.result.objectStoreNames.contains(t)) req.result.createObjectStore(t, { keyPath: 'id' });
     };
@@ -68,11 +69,14 @@ export async function insert(table, row) {
     const cp = await get('clinic_patients', saved.patientId);
     if (cp?.removedAt) await update('clinic_patients', cp.id, { removedAt: null });
   }
+  if (table === 'clinic_drives') await notifyDrive(saved.id);
   return saved;
 }
 
 export async function update(table, id, patch) {
-  return put(table, { ...(await get(table, id)), ...patch, id });
+  const saved = await put(table, { ...(await get(table, id)), ...patch, id });
+  if (table === 'clinic_drives' && 'open' in patch) await notifyDrive(id);
+  return saved;
 }
 
 export const remove = (table, id) => del(table, id);
@@ -148,6 +152,7 @@ export async function setClinicAdmin(clinicId, userId, admin) {
 
 export async function approveClinic(clinicId, ok = true) {
   const c = await update('clinics', clinicId, { approved: ok });
+  if (ok && c.kind === 'municipio') for (const d of await list('clinic_drives', { clinicId })) await notifyDrive(d.id);
   if (ok) {
     for (const m of await list('clinic_members', { clinicId })) {
       await app.notify(m.userId, { title: `¡${c.name} fue aprobada! 🎉`, body: 'Ya puedes aparecer en "Clínicas cercanas" y recibir horas desde la app (actívalo en Equipo → Datos de la clínica).', url: '#/clinica/equipo' });
@@ -662,6 +667,38 @@ export async function saveMuni(c) {
     ...(c.logo !== undefined ? { logo: c.logo } : {}),
     name: c.name, comuna: c.comuna, address: c.address, phone: c.phone, lat: c.lat ?? null, lng: c.lng ?? null, areaKm: c.areaKm ?? 5,
   });
+}
+
+// Igual que notify_drive en la base: avisa el operativo, una sola vez, a los
+// tutores cuya comuna calza con la de la municipalidad.
+async function notifyDrive(driveId) {
+  const d = await get('clinic_drives', driveId);
+  const c = d && await get('clinics', d.clinicId);
+  if (!c || c.kind !== 'municipio' || c.approved === false || d.open === false || d.day < today() || !comunaKey(c.comuna)) return 0;
+  if (await get('drive_notices', driveId)) return 0;
+  const tutors = (await app.listUsers()).filter((u) => u.comuna && comunaKey(u.comuna) === comunaKey(c.comuna));
+  await put('drive_notices', { id: driveId, sentCount: tutors.length, sentAt: now() });
+  const [, m, day] = d.day.split('-');
+  for (const u of tutors) {
+    await app.notify(u.id, {
+      title: `Operativo en ${c.comuna} 🏛️`,
+      body: `${d.title}: ${day}/${m}, de ${d.starts.slice(0, 5)} a ${d.ends.slice(0, 5)}${d.place ? `, en ${d.place}` : ''}. Es gratis y con cupos: reserva el tuyo.`,
+      url: `#/operativo/${d.id}`,
+    });
+  }
+  return tutors.length;
+}
+
+export const driveNotice = (driveId) => get('drive_notices', driveId);
+
+export async function comunaDrives() {
+  const me = await app.currentUser();
+  if (!me?.comuna) return [];
+  const munis = (await all('clinics')).filter((c) => c.kind === 'municipio' && c.approved !== false && comunaKey(c.comuna) === comunaKey(me.comuna));
+  return (await all('clinic_drives'))
+    .filter((d) => d.open !== false && d.day >= today() && munis.some((c) => c.id === d.clinicId))
+    .sort((a, b) => `${a.day}${a.starts}`.localeCompare(`${b.day}${b.starts}`))
+    .map((d) => ({ id: d.id, title: d.title, day: d.day, place: d.place, starts: d.starts.slice(0, 5), ends: d.ends.slice(0, 5), muni: munis.find((c) => c.id === d.clinicId).name }));
 }
 
 // Horarios de un operativo, en la hora local de este navegador.

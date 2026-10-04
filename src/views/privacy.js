@@ -33,7 +33,7 @@ export default async function privacy(el) {
 
       <h2>Qué datos pedimos</h2>
       <ul>
-        <li>Tuyos: nombres, apellidos, teléfono, correo y dirección.</li>
+        <li>Tuyos: nombres, apellidos, teléfono, correo, dirección y comuna.</li>
         <li>De tu mascota: nombre, tipo, raza, vacunas, enfermedades, fotos y la huella biométrica de su cara y nariz.</li>
         <li>De los avisos: la ubicación que entregas al reportar una mascota perdida o encontrada.</li>
         <li>Solo si activas los avisos de mascotas perdidas cerca: tu zona aproximada (redondeada a unos 1 km), nunca tu ubicación exacta.</li>
@@ -45,6 +45,7 @@ export default async function privacy(el) {
         <li>Para que el dueño de una mascota que encontraste pueda contactarte.</li>
         <li>Si reportas tu mascota como perdida y marcas dónde se perdió, para avisar a las personas que estén a 5 km o menos. Ellas ven su foto, su nombre y la zona aproximada, nunca tus datos.</li>
         <li>Solo si lo activaste: tu zona aproximada, para avisarte de mascotas perdidas a 5 km o menos. Nadie más la ve (ni el administrador) y se borra al desactivarlo en tu perfil.</li>
+        <li>Tu comuna, para avisarte de los operativos de tu municipalidad (vacunación, esterilización, microchip). La municipalidad solo sabe a cuántas personas se avisó, nunca quiénes son.</li>
         <li>Solo si lo permitiste al registrar a tu mascota: para mejorar el reconocimiento de mascotas con las fotos de su escaneo. Esas fotos solo las ve el administrador y se borran si eliminas a tu mascota.</li>
         <li>Solo si marcaste la casilla: para enviarte ofertas y novedades útiles para tu mascota. Puedes darte de baja cuando quieras desde tu perfil, y eso no cambia nada más en la app.</li>
       </ul>
@@ -52,7 +53,7 @@ export default async function privacy(el) {
       <h2>Quién los ve</h2>
       <ul>
         <li>Si encuentras una mascota, su dueño ve tu nombre y teléfono para coordinar la entrega. Quien encuentra a tu mascota no ve tus datos.</li>
-        <li>El correo y la dirección solo los ve el administrador de Kiltrazo.</li>
+        <li>El correo, la dirección y la comuna solo los ve el administrador de Kiltrazo.</li>
         <li>No vendemos ni entregamos tus datos a empresas. Si recibes una oferta, la envía Kiltrazo.</li>
         <li>Los datos se guardan en Supabase, un servicio de base de datos en la nube que Kiltrazo usa para funcionar.</li>
       </ul>

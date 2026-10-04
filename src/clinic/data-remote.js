@@ -292,6 +292,16 @@ export async function bookDrive({ driveId, at, tutor = {}, pet = {}, petId = nul
   return run(sb().rpc('book_drive', { p_drive: driveId, p_at: at, p_tutor: tutor, p_pet: pet, p_pet_id: petId }));
 }
 
+/** Próximos operativos de la comuna del tutor (la que eligió en su perfil). */
+export async function comunaDrives() {
+  return (await run(sb().rpc('comuna_drives'))) || [];
+}
+
+/** A cuántos tutores de la comuna se avisó el operativo: { sentCount, sentAt } o null. */
+export async function driveNotice(driveId) {
+  return camel(await run(sb().from('drive_notices').select('*').eq('id', driveId).maybeSingle()));
+}
+
 /** { lost, found } en el radio de la comuna, o { pending } / { noArea }. */
 export async function muniBoard(clinicId) {
   const r = camel(await run(sb().rpc('muni_board', { p_clinic: clinicId })));

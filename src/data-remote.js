@@ -50,9 +50,10 @@ export async function currentUser() {
   return camel(profile);
 }
 
-export async function saveUser({ name, phone, firstName = '', lastName = '', email = '', address = '', promos, promosVersion }) {
+export async function saveUser({ name, phone, firstName = '', lastName = '', email = '', address = '', comuna, promos, promosVersion }) {
   const auth = await session();
   const row = { id: auth.id, name, phone, first_name: firstName, last_name: lastName, email, address };
+  if (comuna !== undefined) row.comuna = comuna;
   // La fecha del consentimiento la pone la base de datos (trigger log_promos).
   if (promos !== undefined) Object.assign(row, { promos, promos_version: promosVersion || '' });
   return camel(await run(sb().from('profiles').upsert(row).select().single()));
