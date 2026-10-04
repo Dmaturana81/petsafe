@@ -112,6 +112,7 @@ export default async function clinicApp(el, path, { refresh }) {
           ${link('vacunas', '#/clinica/vacunas', 'Vacunas por vencer', due.length)}
           ${link('equipo', '#/clinica/equipo', 'Equipo')}
           <a href="manuales/Manual-Kiltrazo-Clinica.pdf" class="ck-nav" target="_blank" rel="noopener" download>📘 Manual (PDF)</a>
+          ${munis.length ? '' : '<a href="#/municipio" class="ck-nav">🏛️ Kiltrazo Municipal</a>'}
           ${later('Hospitalización', 2)}${later('Documentos', 2)}${later('Inventario', 3)}${later('Caja y boletas', 4)}${later('Reportes', 5)}`;
   const reviewNote = muni
     ? '🕒 Tu municipalidad está en revisión por Kiltrazo. Ya puedes crear fichas y preparar operativos. Cuando la aprobemos, los vecinos podrán reservar cupos y verás los perdidos y encontrados de la comuna.'
