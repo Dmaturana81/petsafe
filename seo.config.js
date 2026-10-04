@@ -28,7 +28,7 @@ async function clinicSlugs(env) {
 }
 
 export function seo(env) {
-  const site = (env.VITE_SITE_URL || 'https://andresmaturana-ui.github.io/petsafe').replace(/\/+$/, '');
+  const site = (env.VITE_SITE_URL || 'https://kiltrazo.cl').replace(/\/+$/, '');
   let outDir = 'dist';
   let building = false;
   return {
