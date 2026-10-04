@@ -142,7 +142,7 @@ async function render() {
   const hash = location.hash || START;
   // Kiltrazo Clínica (para veterinarias): se carga aparte, con su propio menú.
   // #/municipio es la entrada de Kiltrazo Municipal, que usa las mismas pantallas.
-  const clinic = /^#\/(clinica|municipio)(\/|$)/.test(hash);
+  const clinic = /^#\/(clinica|municipio|municipal)(\/|$)/.test(hash);
   document.body.classList.toggle('clinic-mode', clinic);
   if (clinic) return renderClinic(hash);
   let { view, params } = resolve(hash);
