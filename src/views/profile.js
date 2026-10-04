@@ -181,7 +181,11 @@ export default async function profile(el, _params, { user, refresh }) {
     // La casilla de ofertas solo aparece al crear el perfil; nunca viene marcada.
     if (e.target.promos) Object.assign(data, { promos: e.target.promos.checked, promosVersion: PROMOS_VERSION });
     if (f.get('password') && !(await makeAccount(data.email, f.get('password'), e.target))) return;
-    await saveUser({ id: user?.id, ...data, name: `${data.firstName} ${data.lastName}` });
+    try {
+      await saveUser({ id: user?.id, ...data, name: `${data.firstName} ${data.lastName}` });
+    } catch (err) {
+      return toast(`No se pudo guardar: ${err.message}`, 'bad');
+    }
     if (!user && (await askPermission()) === 'granted') await enablePush().catch(() => {});
     toast('¡Listo!', 'ok');
     isComplete(user) ? refresh() : go(afterSetup());
