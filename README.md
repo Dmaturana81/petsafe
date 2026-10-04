@@ -106,7 +106,7 @@ la dirección antigua a la nueva, la app que ya estaba en el celular sigue abrie
 y lleva la sesión a la nueva (`src/move.js`); allá se retoma la misma cuenta y se muestra `#/mudanza`. Configuración, una vez:
 
 1. Correr `supabase/schema.sql` y luego `insert into public.admin_emails values ('tu-correo@ejemplo.com');` (en minúsculas).
-2. En Supabase → **Authentication → URL Configuration**: Site URL `https://andresmaturana-ui.github.io/petsafe/`
+2. En Supabase → **Authentication → URL Configuration**: Site URL `https://kiltrazo.cl` (antes `https://andresmaturana-ui.github.io/petsafe/`)
    y en Redirect URLs agregar `https://andresmaturana-ui.github.io/petsafe/**` (para el enlace de "Olvidé mi
    contraseña"). Con dominio propio, agregar también `https://kiltrazo.cl/**` y dejar la dirección nueva en Site URL.
 3. En Supabase → **Authentication → Sign In / Providers → Email**, apagar **Confirm email**: así la cuenta queda
