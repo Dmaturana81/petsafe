@@ -54,8 +54,8 @@ function resolve(path) {
 let remindersRun = false;
 
 export default async function clinicApp(el, path, { refresh }) {
-  // #/municipio: entrada de Kiltrazo Municipal. Por dentro usa las mismas pantallas.
-  const muniEntry = /^municipio(\/|$)/.test(path);
+  // #/municipio (o #/municipal): entrada de Kiltrazo Municipal. Por dentro usa las mismas pantallas.
+  const muniEntry = /^(municipio|municipal)(\/|$)/.test(path);
   const sub = muniEntry ? '' : path.replace(/^clinica\/?/, '');
   const s = await session();
   if (!s.user) return start(el, { session: s, refresh, pendingCode: pendingLink(sub), muni: muniEntry });

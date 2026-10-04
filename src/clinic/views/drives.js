@@ -2,7 +2,8 @@
 // cupos que los vecinos reservan desde un enlace, con o sin la app.
 
 import { esc, toast, go } from '../../ui.js';
-import { listDrives, getDrive, saveDrive, muniBookings, driveBookings, driveCapacity, listPatients, driveNotice, today } from '../data.js';
+import { listDrives, getDrive, saveDrive, deleteDrive, saveAppointment, muniBookings, driveBookings, driveCapacity, listPatients, driveNotice, today } from '../data.js';
+import { tell } from './agenda.js';
 import { DRIVE_SERVICES, STATUS, fmtDay, fmtTime, waLink, avatar, speciesLine } from '../ui.js';
 
 const hm = (t) => String(t || '').slice(0, 5);
@@ -69,6 +70,7 @@ export async function driveForm(el, { id }, { clinic }) {
       ${id ? '' : `<p class="ck-span ck-tip small">📣 Al crearlo, Kiltrazo avisa a los tutores que tienen <b>${esc(clinic.comuna || 'tu comuna')}</b> como su comuna${clinic.approved === false ? ' (cuando Kiltrazo apruebe tu municipalidad)' : ''}. El aviso se envía una sola vez: revisa el día, la hora y el lugar antes de crear.</p>`}
       <label class="ck-span">Indicaciones para el vecino<textarea name="notes" rows="2" maxlength="600" placeholder="Ej.: ayuno de 12 horas, traer collar y correa, perros con bozal si muerden.">${v('notes')}</textarea></label>
       <div class="ck-span ck-row-end">
+        ${id ? '<button type="button" class="btn danger small ck-ddel" id="ck-ddel">🗑️ Eliminar operativo</button>' : ''}
         <a class="btn ghost small" href="${id ? `#/clinica/operativo/${id}` : '#/clinica/operativos'}">Cancelar</a>
         <button class="btn primary small">${id ? 'Guardar cambios' : 'Crear operativo'}</button>
       </div>
@@ -92,6 +94,26 @@ export async function driveForm(el, { id }, { clinic }) {
   };
   form.addEventListener('input', total);
   total();
+  el.querySelector('#ck-ddel')?.addEventListener('click', async (e) => {
+    const booked = (await driveBookings(id)).filter(live);
+    const ask = booked.length
+      ? `¿Eliminar "${d.title}"? Tiene ${booked.length} ${booked.length === 1 ? 'reserva' : 'reservas'}: las cancelaremos y avisaremos a los vecinos que usan la app. A los demás, avísales por WhatsApp antes de eliminarlo.`
+      : `¿Eliminar "${d.title}"? No se puede deshacer.`;
+    if (!confirm(ask)) return;
+    e.target.disabled = true;
+    try {
+      for (const a of booked) {
+        await saveAppointment({ id: a.id, status: 'cancelada' });
+        await tell(a.id, 'rechazada');
+      }
+      await deleteDrive(id);
+      toast('Operativo eliminado', 'ok');
+      go('#/clinica/operativos');
+    } catch (err) {
+      toast(err.message, 'bad');
+      e.target.disabled = false;
+    }
+  });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const r = read();
