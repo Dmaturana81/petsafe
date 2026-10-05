@@ -54,24 +54,27 @@ function resolve(path) {
 let remindersRun = false;
 
 export default async function clinicApp(el, path, { refresh }) {
-  // #/municipio (o #/municipal): entrada de Kiltrazo Municipal. Por dentro usa las mismas pantallas.
+  // #/municipio (o #/municipal): Kiltrazo Municipal. Por dentro usa las mismas
+  // pantallas que Clínica (los enlaces internos dicen #/clinica/...), pero la
+  // dirección se muestra como #/municipio/... mientras se ve una municipalidad.
   const muniEntry = /^(municipio|municipal)(\/|$)/.test(path);
-  const sub = muniEntry ? '' : path.replace(/^clinica\/?/, '');
+  const sub = path.replace(/^(clinica|municipio|municipal)\/?/, '');
   const s = await session();
-  if (!s.user) return start(el, { session: s, refresh, pendingCode: pendingLink(sub), muni: muniEntry });
+  if (!s.user) return start(el, { session: s, refresh, pendingCode: muniEntry ? null : pendingLink(sub), muni: muniEntry });
 
   const clinics = await myClinics(s.user.id);
   const munis = clinics.filter(isMuni);
   if (muniEntry) {
     if (!munis.length) return start(el, { session: s, refresh, muni: true });
     if (!isMuni(clinics.find((c) => c.id === activeClinicId()))) setActiveClinic(munis[0].id);
-    location.replace('#/clinica');
-    return;
   }
   if (!clinics.length) return start(el, { session: s, refresh, pendingCode: pendingLink(sub) });
   const clinic = clinics.find((c) => c.id === activeClinicId()) || clinics[0];
   const muni = isMuni(clinic);
   setActiveClinic(clinic.id);
+  // Solo cambia lo que se ve en la barra de direcciones (no recarga la pantalla).
+  const shown = `#/${muni ? 'municipio' : 'clinica'}${sub ? `/${sub}` : ''}`;
+  if (location.hash !== shown) history.replaceState(history.state, '', shown);
 
   // Una vez por visita: avisos de próximas vacunas a los tutores (también los
   // manda la base cada mañana, si tiene pg_cron).
