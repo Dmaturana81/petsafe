@@ -233,6 +233,9 @@ img { max-width: 100%; }
 }
 .pick:has(input:checked) { border-color: var(--green); background: #eef7ef; }
 .pick input { accent-color: var(--green); }
+/* Dentro de un formulario (por ejemplo, reservar un operativo) sigue en fila. */
+.form label.pick { display: flex; gap: 12px; }
+.form .pick input[type="radio"] { width: auto; flex: none; padding: 0; }
 .pick img, .pet-list img, .admin-list img, .admin-list-row img {
   width: 56px; height: 56px; object-fit: cover; border-radius: 16px; background: var(--peach); flex: none;
 }

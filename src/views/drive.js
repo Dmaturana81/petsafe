@@ -2,8 +2,8 @@
 // microchip…). El vecino elige un horario y reserva su cupo, con su mascota de
 // Kiltrazo o dejando sus datos, sin necesitar la app.
 
-import { esc, toast, isComplete } from '../ui.js';
-import { currentUser, myPets } from '../data.js';
+import { esc, toast, go, returnHereLater } from '../ui.js';
+import { currentUser, myPets, CLOUD } from '../data.js';
 import { SPECIES } from '../breeds.js';
 import { DRIVE_SERVICES } from '../clinic/ui.js';
 import { setPage } from '../seo.js';
@@ -19,7 +19,8 @@ export default async function drivePage(el, { id }) {
     el.innerHTML = '<div class="card"><h1>No encontramos este operativo</h1><p>Revisa el enlace o pregunta en tu municipalidad.</p></div>';
     return;
   }
-  const pets = isComplete(user) ? await myPets(user).catch(() => []) : [];
+  // Sus mascotas de Kiltrazo, aunque al perfil le falte algún dato.
+  const pets = user ? await myPets(user).catch(() => []) : [];
   // Se comparan fechas, no textos: la base puede mandar "+00:00" o "-03:00".
   const slots = d.slots.filter((s) => new Date(s.at).getTime() > Date.now());
   const free = slots.reduce((n, s) => n + s.left, 0);
@@ -88,9 +89,10 @@ export default async function drivePage(el, { id }) {
         <label class="pick"><input type="radio" name="mSpecies" value="otro"> Otro</label>
       </fieldset>
       <p class="small muted">Tus datos los recibe ${esc(d.muni)} solo para este operativo.</p>
-      ${pets.length ? '<button type="button" class="link small" data-mine>Elegir una de mis mascotas</button>' : ''}`;
+      ${pets.length ? '<button type="button" class="link small" data-mine>Elegir una de mis mascotas</button>' : CLOUD && !user ? '<button type="button" class="link small" data-login>¿Ya usas Kiltrazo? Entra y elige a tu mascota</button>' : ''}`;
     who.querySelector('[data-other]')?.addEventListener('click', () => { mode = 'guest'; draw(); });
     who.querySelector('[data-mine]')?.addEventListener('click', () => { mode = 'app'; draw(); });
+    who.querySelector('[data-login]')?.addEventListener('click', () => { returnHereLater(location.hash); go('#/perfil'); });
   };
   draw();
 
