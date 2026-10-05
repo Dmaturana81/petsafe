@@ -4,7 +4,7 @@
 import { createAccount } from '../../data.js';
 import { mountEmailLogin } from '../../views/login-email.js';
 import { esc, toast, getLocation } from '../../ui.js';
-import { createClinic, joinClinic, saveClinic, saveSpecialties, setActiveClinic, createMunicipality, saveMuni } from '../data.js';
+import { createClinic, joinClinic, saveClinic, saveSpecialties, setActiveClinic, createMunicipality, saveMuni, myClinics, isMuni } from '../data.js';
 import { muniIntro, muniCreateCard, bindMuniForm } from '../muni.js';
 import { specPick, readSpecs } from '../specialties.js';
 import { logoField, bindLogo } from '../logo.js';
@@ -77,10 +77,14 @@ export default function start(el, { session, refresh, pendingCode, muni = false 
     const btn = e.target.querySelector('button:not([type="button"])');
     btn.disabled = true;
     try {
-      setActiveClinic(await fn(data));
+      const id = await fn(data);
+      setActiveClinic(id);
       toast('¡Listo!', 'ok');
-      if (/^#\/municipio/.test(location.hash)) location.hash = '#/clinica';
-      else refresh();
+      // Se abre lo que se creó o a lo que se unió: clínica o municipalidad.
+      const joined = (await myClinics(session.user.id)).find((c) => c.id === id);
+      const next = isMuni(joined) ? '#/municipio' : '#/clinica';
+      if (location.hash === next) refresh();
+      else location.hash = next;
     } catch (err) {
       toast(err.message, 'bad');
       btn.disabled = false;
