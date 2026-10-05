@@ -68,7 +68,7 @@ export default async function profile(el, _params, { user, refresh }) {
     ${user ? `
       <div class="card">
         <h2>Notificaciones</h2>
-        <p>${perm === 'granted' ? '✅ Activadas en este celular.' : perm === 'denied' ? 'Bloqueadas. Actívalas desde la configuración del navegador.' : perm === 'unsupported' ? unsupportedHelp() : 'Actívalas para saber al instante si encuentran a tu mascota.'}</p>
+        <p>${perm === 'granted' ? '✅ Activadas en este celular.' : perm === 'denied' ? deniedHelp() : perm === 'unsupported' ? unsupportedHelp() : 'Actívalas para saber al instante si encuentran a tu mascota.'}</p>
         ${perm === 'default' ? '<button class="btn secondary" id="perm">Activar notificaciones</button>' : ''}
       </div>
 
@@ -375,6 +375,16 @@ async function makeAccount(email, password, form) {
 }
 
 // Por qué no hay notificaciones y cómo conseguirlas.
+// En iPhone, Safari responde "bloqueadas" aunque el problema es que la app no
+// está instalada: ahí solo funcionan desde el ícono de la pantalla de inicio.
+function deniedHelp() {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (ios && !installed) return unsupportedHelp();
+  if (ios) return 'Bloqueadas. Actívalas en Ajustes del iPhone → Notificaciones → Kiltrazo → Permitir notificaciones.';
+  return 'Bloqueadas. Actívalas desde la configuración del navegador (el candado junto a la dirección → Notificaciones → Permitir).';
+}
+
 function unsupportedHelp() {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
