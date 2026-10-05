@@ -3,7 +3,7 @@
 // En el computador muestra un menú lateral; en el celular, uno arriba.
 
 import './clinic.css';
-import { esc } from '../ui.js';
+import { esc, go } from '../ui.js';
 import { session, myClinics, members, activeClinicId, setActiveClinic, listAppointments, dueVaccines, runReminders, pendingRequests, today, isMuni } from './data.js';
 import { roleName } from './ui.js';
 import { brandWithLogo } from './logo.js';
@@ -55,26 +55,26 @@ let remindersRun = false;
 
 // #/clinica abre la clínica y #/municipio la municipalidad, aunque la cuenta
 // tenga las dos. Las pantallas municipales enlazan a #/clinica/... por dentro:
-// si se llega desde #/municipio, se sigue en la municipalidad.
-let fromMuni = false;
-let picked = false;
-window.addEventListener('hashchange', (e) => {
-  fromMuni = /#\/(municipio|municipal)(\/|$)/.test(new URL(e.oldURL).hash);
-});
+// mientras se ve la municipalidad, esos enlaces se cambian a #/municipio/...
+// (los marcados con data-keep van a la clínica de verdad).
+document.addEventListener('click', (e) => {
+  const a = e.target.closest?.('a[href^="#/clinica"]');
+  if (!a || a.dataset.keep !== undefined || !document.body.classList.contains('muni-mode')) return;
+  e.preventDefault();
+  go(a.getAttribute('href'));
+}, true);
 
 export default async function clinicApp(el, path, { refresh }) {
   const muniEntry = /^(municipio|municipal)(\/|$)/.test(path);
   const sub = path.replace(/^(clinica|municipio|municipal)\/?/, '');
-  const wantMuni = muniEntry || fromMuni;
+  document.body.classList.remove('muni-mode');
   const s = await session();
   if (!s.user) return start(el, { session: s, refresh, pendingCode: muniEntry ? null : pendingLink(sub), muni: muniEntry });
 
   const clinics = await myClinics(s.user.id);
   const munis = clinics.filter(isMuni);
   const active = clinics.find((c) => c.id === activeClinicId());
-  if (picked) {
-    picked = false; // elegida en la lista del menú: se respeta tal cual
-  } else if (wantMuni) {
+  if (muniEntry) {
     if (!munis.length) return start(el, { session: s, refresh, muni: true });
     if (!isMuni(active)) setActiveClinic(munis[0].id);
   } else {
@@ -85,6 +85,7 @@ export default async function clinicApp(el, path, { refresh }) {
   const clinic = clinics.find((c) => c.id === activeClinicId()) || clinics[0];
   const muni = isMuni(clinic);
   setActiveClinic(clinic.id);
+  document.body.classList.toggle('muni-mode', muni);
   // Solo cambia lo que se ve en la barra de direcciones (no recarga la pantalla).
   const shown = `#/${muni ? 'municipio' : 'clinica'}${sub ? `/${sub}` : ''}`;
   if (location.hash !== shown) history.replaceState(history.state, '', shown);
@@ -119,6 +120,7 @@ export default async function clinicApp(el, path, { refresh }) {
           ${link('sala', '#/clinica/sala', 'Sala de espera', inRoom)}
           ${link('vacunas', '#/clinica/vacunas', 'Vacunas por vencer', due.length)}
           ${link('equipo', '#/clinica/equipo', 'Equipo')}
+          <a href="#/clinica" class="ck-nav" data-keep>🩺 Kiltrazo Clínica</a>
           ${later('Denuncias', 2)}${later('Adopciones', 3)}${later('Estadísticas', 3)}` : `
           ${link('agenda', '#/clinica', 'Agenda de hoy', pending, true)}
           ${link('solicitudes', '#/clinica/solicitudes', 'Solicitudes de hora', asked.length, true)}
@@ -156,7 +158,6 @@ export default async function clinicApp(el, path, { refresh }) {
 
   el.querySelector('.ck-clinic-pick')?.addEventListener('change', (e) => {
     setActiveClinic(e.target.value);
-    picked = true;
     const next = isMuni(clinics.find((c) => c.id === e.target.value)) ? '#/municipio' : '#/clinica';
     if (location.hash === next) refresh();
     else location.hash = next;
