@@ -20,8 +20,8 @@ export default async function drivePage(el, { id }) {
     return;
   }
   const pets = isComplete(user) ? await myPets(user).catch(() => []) : [];
-  const now = new Date().toISOString();
-  const slots = d.slots.filter((s) => s.at > now);
+  // Se comparan fechas, no textos: la base puede mandar "+00:00" o "-03:00".
+  const slots = d.slots.filter((s) => new Date(s.at).getTime() > Date.now());
   const free = slots.reduce((n, s) => n + s.left, 0);
   const where = [d.place, d.address, d.comuna].filter(Boolean).join(', ');
   setPage({ title: `${d.title} · ${d.muni}`, description: `${longDay(d.day)}. ${where}. Reserva tu cupo gratis.`, path: `/#/operativo/${d.id}` });
@@ -47,7 +47,8 @@ export default async function drivePage(el, { id }) {
 
   const box = el.querySelector('#drive-step');
   if (!d.open || !free) {
-    box.innerHTML = `<div class="card"><h2>${d.open ? 'No quedan cupos' : 'Las inscripciones están cerradas'}</h2>
+    const title = !d.open ? 'Las inscripciones están cerradas' : d.slots.length && !slots.length ? 'El horario de este operativo ya pasó' : 'No quedan cupos';
+    box.innerHTML = `<div class="card"><h2>${title}</h2>
       <p>${d.phone ? `Si tienes dudas, llama a la municipalidad al ${esc(d.phone)}.` : 'Si tienes dudas, pregunta en tu municipalidad.'}</p></div>`;
     return;
   }
