@@ -220,7 +220,7 @@ let quietRunning = false;
 async function quietRender() {
   const hash = location.hash || START;
   const path = hash.replace(/^#\/?/, '');
-  const clinic = /^clinica(\/|$)/.test(path);
+  const clinic = /^(clinica|municipio|municipal)(\/|$)/.test(path);
   if (document.hidden || quietRunning || Date.now() - quietAt < 3000) return;
   if (!(clinic ? LIVE_CLINIC : LIVE_APP).test(path) || busy(viewEl)) return;
   quietRunning = true;
@@ -285,7 +285,7 @@ setInterval(() => document.hidden || updateBadge(), 30000);
 document.addEventListener('visibilitychange', () => document.hidden || quietRender());
 window.addEventListener('focus', () => quietRender());
 window.addEventListener('petsafe:changed', () => /^#\/avisos/.test(location.hash) && quietRender());
-setInterval(() => /^#\/clinica(\/|$)/.test(location.hash) && quietRender(), 20000);
+setInterval(() => /^#\/(clinica|municipio|municipal)(\/|$)/.test(location.hash) && quietRender(), 20000);
 // Al tocar una notificación con la app abierta, el Service Worker pide navegar.
 navigator.serviceWorker?.addEventListener('message', (e) => {
   if (e.data?.type === 'navigate') location.hash = e.data.url.replace(/^.*#/, '#');

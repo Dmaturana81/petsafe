@@ -1,4 +1,4 @@
-import { saveUser, listUsers, switchUser, myPets, removeMyPet, createPetGift, savePet, contactAdmin, enablePush, loginEmail, createAccount, setPassword, signOut, CLOUD } from '../data.js';
+import { saveUser, currentUser, listUsers, switchUser, myPets, removeMyPet, createPetGift, savePet, contactAdmin, enablePush, loginEmail, createAccount, setPassword, signOut, CLOUD } from '../data.js';
 import { mountEmailLogin } from './login-email.js';
 import { askPermission, notificationsSupported } from '../notify.js';
 import { esc, toast, go, isComplete, afterSetup } from '../ui.js';
@@ -18,7 +18,9 @@ export default async function profile(el, _params, { user, refresh }) {
 
   el.innerHTML = `
     ${saved ? '' : '<a class="card finder-link" href="#/veterinarios">🔎 <span><b>¿Buscas veterinario?</b> Ve las clínicas Kiltrazo y pide hora sin crear cuenta.</span></a>'}
-    ${CLOUD && !user ? `
+    ${CLOUD && !user && email ? `
+      <div class="card"><p>Entraste como <b>${esc(email)}</b>. Esta cuenta todavía no tiene tus datos en la app: complétalos aquí abajo.</p></div>` : ''}
+    ${CLOUD && !user && !email ? `
       <div class="card">
         <h2>¿Ya tienes cuenta?</h2>
         <details><summary class="btn ghost">Entrar con mi correo y clave</summary><div id="email-login"></div></details>
@@ -39,7 +41,7 @@ export default async function profile(el, _params, { user, refresh }) {
         <label>Nombres<input name="firstName" required value="${esc(user?.firstName || user?.name)}" autocomplete="given-name"></label>
         <label>Apellidos<input name="lastName" required value="${esc(user?.lastName)}" autocomplete="family-name"></label>
         <label>Teléfono (WhatsApp)<input name="phone" type="tel" required placeholder="+56 9 1234 5678" value="${esc(user?.phone)}" autocomplete="tel"></label>
-        <label>Correo<input name="email" type="email" required value="${esc(user?.email)}" autocomplete="email"></label>
+        <label>Correo<input name="email" type="email" required value="${esc(user?.email || email)}" autocomplete="email"></label>
         <label>Dirección<input name="address" required placeholder="Calle, número, comuna" value="${esc(user?.address)}" autocomplete="street-address"></label>
         <label>Comuna${comunaField(user?.comuna)}</label>
         <p class="muted small">Con tu comuna te avisamos de los operativos de tu municipalidad: vacunación, esterilización, microchip.</p>
@@ -169,7 +171,11 @@ export default async function profile(el, _params, { user, refresh }) {
   if (nearbyBox) profileNearby(nearbyBox, user, refresh).catch((err) => console.warn('Avisos cerca', err));
 
   const loginBox = el.querySelector('#email-login');
-  if (loginBox) mountEmailLogin(loginBox, { onDone: () => go('#/') });
+  if (loginBox) mountEmailLogin(loginBox, {
+    // Una cuenta creada en Clínica o Municipal puede no tener perfil en la app:
+    // entonces se completa aquí, en vez de volver a la portada.
+    onDone: async () => (isComplete(await currentUser()) ? go('#/') : refresh()),
+  });
 
   el.querySelector('#profile').addEventListener('submit', async (e) => {
     e.preventDefault();
