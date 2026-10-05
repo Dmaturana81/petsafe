@@ -6,7 +6,7 @@
 // Pantallas que se actualizan: en la app, al volver a ella; en Kiltrazo
 // Clínica, además cada 20 s.
 export const LIVE_APP = /^(|avisos|hora\/[^/]+)$/;
-export const LIVE_CLINIC = /^clinica(\/(agenda\/[^/]+|sala|solicitudes|domicilio|vacunas))?\/?$/;
+export const LIVE_CLINIC = /^(clinica|municipio|municipal)(\/(agenda\/[^/]+|sala|solicitudes|domicilio|vacunas))?\/?$/;
 
 /** Anota lo que la pantalla dibujó escondido (formularios, detalles). */
 export function markHidden(root) {
