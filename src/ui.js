@@ -33,6 +33,8 @@ export function timeAgo(iso) {
 }
 
 export function go(hash) {
+  // En Kiltrazo Municipal los enlaces internos #/clinica/... siguen en la municipalidad.
+  if (document.body.classList.contains('muni-mode')) hash = hash.replace(/^#\/clinica(?=\/|$)/, '#/municipio');
   if (location.hash === hash || (!location.hash && hash === '#/')) window.dispatchEvent(new HashChangeEvent('hashchange'));
   else location.hash = hash;
 }

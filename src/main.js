@@ -144,6 +144,7 @@ async function render() {
   // #/municipio es la entrada de Kiltrazo Municipal, que usa las mismas pantallas.
   const clinic = /^#\/(clinica|municipio|municipal)(\/|$)/.test(hash);
   document.body.classList.toggle('clinic-mode', clinic);
+  if (!clinic) document.body.classList.remove('muni-mode');
   if (clinic) return renderClinic(hash);
   let { view, params } = resolve(hash);
   // En el computador el administrador usa todo el ancho de la pantalla.
