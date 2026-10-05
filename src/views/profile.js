@@ -174,7 +174,7 @@ export default async function profile(el, _params, { user, refresh }) {
   if (loginBox) mountEmailLogin(loginBox, {
     // Una cuenta creada en Clínica o Municipal puede no tener perfil en la app:
     // entonces se completa aquí, en vez de volver a la portada.
-    onDone: async () => (isComplete(await currentUser()) ? go('#/') : refresh()),
+    onDone: async () => (isComplete(await currentUser()) ? go(afterSetup()) : refresh()),
   });
 
   el.querySelector('#profile').addEventListener('submit', async (e) => {
