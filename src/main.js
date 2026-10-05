@@ -59,15 +59,22 @@ const oops = (err) => (STALE.test(String(err?.message))
 window.addEventListener('vite:preloadError', (e) => { if (reloadIfStale(e.payload)) e.preventDefault(); });
 window.addEventListener('unhandledrejection', (e) => reloadIfStale(e.reason));
 
+// …/clinica/, /municipio/, /veterinarios/ y /kiltrazo/ (páginas propias que crea
+// seo.config.js): direcciones sin "#", porque Instagram y otras apps cortan lo
+// que va después del "#" y todo terminaba en la presentación. Se cambia a la
+// dirección de siempre (…/#/clinica) para que el resto de la app funcione igual.
+const page = location.pathname.match(/\/(clinica|municipio|veterinarios|kiltrazo)\/?$/);
+if (page) {
+  history.replaceState(history.state, '', `${document.baseURI.split(/[?#]/)[0]}${location.search}${location.hash || `#/${page[1]}`}`);
+}
+
 // Enlace corto de la página de una clínica (…/?c=nombre, el que apunta su dominio .cl).
 const shortSlug = new URLSearchParams(location.search).get('c');
 if (shortSlug && (!location.hash || location.hash === '#/')) {
   history.replaceState(null, '', `${location.pathname}#/c/${encodeURIComponent(shortSlug)}`);
 }
 
-// …/veterinarios/ (página propia para Google, la crea seo.config.js): abre
-// el buscador de veterinarios.
-const START = /\/veterinarios\/?$/.test(location.pathname) ? '#/veterinarios' : '#/';
+const START = '#/';
 
 const routes = [
   ['', home],
