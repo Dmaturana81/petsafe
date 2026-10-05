@@ -2,8 +2,9 @@
 // - Pone la dirección pública (VITE_SITE_URL) en las etiquetas de index.html.
 // - Agrega las etiquetas de verificación de Google y Meta si están configuradas.
 // - Escribe robots.txt y sitemap.xml (con la página de cada clínica aprobada).
-// - Crea …/veterinarios/, una dirección "de verdad" para el buscador de
-//   veterinarios: Google no indexa lo que va después de "#".
+// - Crea …/veterinarios/, …/clinica/, …/municipio/ y …/kiltrazo/, direcciones
+//   "de verdad" sin "#": Google no indexa lo que va después de "#" e
+//   Instagram lo corta.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
 const xml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -27,6 +28,30 @@ async function clinicSlugs(env) {
   }
 }
 
+// Páginas sin "#". La de /kiltrazo/ es la misma presentación de la portada,
+// así que no lleva título propio ni va en el sitemap.
+const PAGES = [
+  {
+    path: 'veterinarios',
+    priority: '0.9',
+    title: 'Encuentra veterinario cerca de ti · Kiltrazo',
+    description: 'Clínicas veterinarias y veterinarios a domicilio en Chile. Busca por comuna o especialidad, mira urgencias y pide hora en línea, con o sin la app.',
+  },
+  {
+    path: 'clinica',
+    priority: '0.8',
+    title: 'Kiltrazo Clínica · agenda y fichas para veterinarias',
+    description: 'Agenda, fichas clínicas, vacunas y horas en línea para clínicas veterinarias y veterinarios a domicilio. Funciona en el computador y en el celular, y es gratis.',
+  },
+  {
+    path: 'municipio',
+    priority: '0.8',
+    title: 'Kiltrazo Municipal · operativos y registro de mascotas',
+    description: 'Operativos de vacunación y esterilización con reserva en línea, registro de animales de la comuna y mascotas perdidas y encontradas.',
+  },
+  { path: 'kiltrazo' },
+];
+
 export function seo(env) {
   const site = (env.VITE_SITE_URL || 'https://kiltrazo.cl').replace(/\/+$/, '');
   let outDir = 'dist';
@@ -49,7 +74,7 @@ export function seo(env) {
       const today = new Date().toISOString().slice(0, 10);
       const urls = [
         { loc: `${site}/`, priority: '1.0' },
-        { loc: `${site}/veterinarios/`, priority: '0.9' },
+        ...PAGES.filter((p) => p.title).map((p) => ({ loc: `${site}/${p.path}/`, priority: p.priority })),
         ...(await clinicSlugs(env)).map((slug) => ({ loc: `${site}/?c=${encodeURIComponent(slug)}`, priority: '0.7' })),
       ];
       await writeFile(`${outDir}/sitemap.xml`, `<?xml version="1.0" encoding="UTF-8"?>
@@ -63,22 +88,26 @@ Allow: /
 Sitemap: ${site}/sitemap.xml
 `);
 
-      // …/veterinarios/: la misma app, con su propio título y descripción.
-      const title = 'Encuentra veterinario cerca de ti · Kiltrazo';
-      const description = 'Clínicas veterinarias y veterinarios a domicilio en Chile. Busca por comuna o especialidad, mira urgencias y pide hora en línea, con o sin la app.';
+      // Direcciones sin "#" (…/veterinarios/, …/clinica/, …): la misma app, con su
+      // propio título y descripción. Sirven para Google y para Instagram, que
+      // cortan lo que va después de "#".
       const index = await readFile(`${outDir}/index.html`, 'utf8');
-      const page = index
-        .replace('<head>', '<head>\n    <base href="../" />')
-        .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
-        .replace(/(<meta name="description" content=")[^"]*/, `$1${description}`)
-        .replace(/(<meta property="og:description" content=")[^"]*/, `$1${description}`)
-        .replace(/(<meta name="twitter:description" content=")[^"]*/, `$1${description}`)
-        .replace(/(<meta property="og:title" content=")[^"]*/, `$1${title}`)
-        .replace(/(<meta name="twitter:title" content=")[^"]*/, `$1${title}`)
-        .replace(`<link rel="canonical" href="${site}/" />`, `<link rel="canonical" href="${site}/veterinarios/" />`)
-        .replace(`<meta property="og:url" content="${site}/" />`, `<meta property="og:url" content="${site}/veterinarios/" />`);
-      await mkdir(`${outDir}/veterinarios`, { recursive: true });
-      await writeFile(`${outDir}/veterinarios/index.html`, page);
+      for (const p of PAGES) {
+        let html = index.replace('<head>', '<head>\n    <base href="../" />');
+        if (p.title) {
+          html = html
+            .replace(/<title>[^<]*<\/title>/, `<title>${p.title}</title>`)
+            .replace(/(<meta name="description" content=")[^"]*/, `$1${p.description}`)
+            .replace(/(<meta property="og:description" content=")[^"]*/, `$1${p.description}`)
+            .replace(/(<meta name="twitter:description" content=")[^"]*/, `$1${p.description}`)
+            .replace(/(<meta property="og:title" content=")[^"]*/, `$1${p.title}`)
+            .replace(/(<meta name="twitter:title" content=")[^"]*/, `$1${p.title}`)
+            .replace(`<link rel="canonical" href="${site}/" />`, `<link rel="canonical" href="${site}/${p.path}/" />`)
+            .replace(`<meta property="og:url" content="${site}/" />`, `<meta property="og:url" content="${site}/${p.path}/" />`);
+        }
+        await mkdir(`${outDir}/${p.path}`, { recursive: true });
+        await writeFile(`${outDir}/${p.path}/index.html`, html);
+      }
     },
   };
 }
