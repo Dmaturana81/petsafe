@@ -1,5 +1,5 @@
 import {
-  allPets, savePet, allFound, saveFound, deleteFound, listUsers, moveUserPets, adminDeleteUser, adminDeletePet, notify, notifyAll,
+  allPets, savePet, allFound, saveFound, deleteFound, listUsers, listAccounts, moveUserPets, adminDeleteUser, adminDeletePet, notify, notifyAll,
   latestSuccesses, deleteSuccess, commentsFor, deleteComment, addSuccess, markRecovered,
   trainingPhotos, tagStats, CLOUD, isAdmin, claimAdmin, adminExists, listContacts, markContactRead, deleteContact, pushConfigured, savePushKey, enablePush,
 } from '../data.js';
@@ -287,7 +287,8 @@ async function alertas(panel, { refresh }) {
 }
 
 async function mensajes(panel, { refresh }) {
-  const [users, contacts] = await Promise.all([listUsers(), listContacts()]);
+  const [{ people: users }, contacts] = await Promise.all([loadPeople(), listContacts()]);
+  const appUsers = users.filter((u) => u.hasProfile).length;
   // "Responder" o "Enviar mensaje" desde otra pestaña dejan elegido al destinatario.
   let to = sessionStorage.getItem('petsafe-admin-to') || '*';
   sessionStorage.removeItem('petsafe-admin-to');
@@ -324,13 +325,13 @@ async function mensajes(panel, { refresh }) {
   const setTo = (id) => {
     to = users.some((u) => u.id === id) ? id : '*';
     const u = users.find((x) => x.id === to);
-    panel.querySelector('#to-label').textContent = u ? `${u.name} · ${u.phone}` : `Todos los usuarios (${users.length})`;
+    panel.querySelector('#to-label').textContent = u ? [fullName(u), u.phone || u.email].filter(Boolean).join(' · ') : `Todos los usuarios de la app (${appUsers})`;
     panel.querySelector('#to-all').hidden = to === '*';
   };
   setTo(to);
   panel.querySelector('#to-all').addEventListener('click', () => setTo('*'));
   userSearch(panel.querySelector('#q'), panel.querySelector('#results'), users, (u) => `
-    <li><span><strong>${esc(u.name)}</strong><small>${esc(u.phone)}${u.email ? ` · ${esc(u.email)}` : ''}</small></span>
+    <li><span><strong>${esc(fullName(u))}</strong><small>${esc([u.phone, u.email].filter(Boolean).join(' · '))}</small>${u.teams.length ? `<small>${u.teams.map((t) => esc(teamText(t))).join('<br>')}</small>` : ''}</span>
     <button type="button" class="btn small" data-pick="${esc(u.id)}">Elegir</button></li>`, (el) => {
     el.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
       setTo(b.dataset.pick);
@@ -385,7 +386,7 @@ function userSearch(input, list, users, row, bind) {
     if (!q) return (list.innerHTML = '');
     const qd = digits(q);
     const found = users.filter((u) =>
-      [u.name, u.firstName, u.lastName, u.email, u.address].some((v) => norm(v).includes(q)) ||
+      [u.name, u.firstName, u.lastName, u.email, u.address, ...(u.teams || []).map((t) => t.place)].some((v) => norm(v).includes(q)) ||
       (qd.length >= 3 && digits(u.phone).includes(qd)));
     list.innerHTML = found.slice(0, 10).map(row).join('') ||
       '<li><span class="muted">Ningún usuario coincide.</span></li>';
@@ -394,13 +395,56 @@ function userSearch(input, list, users, row, bind) {
   });
 }
 
+// Todas las personas que usan Kiltrazo: las de la app (tienen perfil) y las
+// que entran a Kiltrazo Clínica o Municipal, aunque no tengan perfil. Cada una
+// trae dónde trabaja (teams) y el correo de su cuenta si falta en el perfil.
+async function loadPeople() {
+  const { allClinics } = await import('../clinic/data.js');
+  const { roleName } = await import('../clinic/ui.js');
+  const [users, pets, clinics, accounts] = await Promise.all([listUsers(), allPets(), allClinics().catch(() => []), listAccounts()]);
+  const mail = new Map(accounts.map((a) => [a.id, a]));
+  const people = users.map((u) => ({ ...u, email: u.email || mail.get(u.id)?.email || '', hasProfile: true, teams: [] }));
+  for (const c of clinics) {
+    for (const m of c.members || []) {
+      let p = people.find((x) => x.id === m.userId);
+      if (!p) {
+        const a = mail.get(m.userId);
+        p = { id: m.userId, name: m.name, firstName: '', lastName: '', phone: '', email: a?.email || '', address: '', createdAt: a?.createdAt || m.createdAt, hasProfile: false, teams: [] };
+        people.push(p);
+      }
+      p.teams.push({ muni: c.kind === 'municipio', place: c.name, placePhone: c.phone || '', role: roleName(m.role, c), isAdmin: !!m.isAdmin });
+    }
+  }
+  for (const p of people) {
+    const own = pets.filter((x) => x.ownerId === p.id).length;
+    p.app = p.hasProfile && (own > 0 || !p.teams.length);
+    p.clinic = p.teams.some((t) => !t.muni);
+    p.muni = p.teams.some((t) => t.muni);
+    p.phone = p.phone || '';
+  }
+  return { people, users, pets };
+}
+
+const fullName = (u) => (u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.name) || 'Sin nombre';
+const teamText = (t) => `${t.muni ? '🏛️' : '🏥'} ${t.place} · ${t.role}${t.isAdmin ? ' (administra)' : ''}`;
+// Cómo usa Kiltrazo: "App", "Clínica", "Municipal" (puede ser más de uno).
+const usesText = (p) => [p.app && 'App', p.clinic && 'Clínica', p.muni && 'Municipal'].filter(Boolean).join(', ');
+
 // Lista de usuarios; al tocar uno se ven sus datos y sus mascotas.
 async function usuarios(panel, { refresh }) {
-  const [users, pets] = await Promise.all([listUsers(), allPets()]);
+  const { people: users, pets } = await loadPeople();
   const petsOf = (id) => pets.filter((p) => p.ownerId === id);
-  const fullName = (u) => (u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.name) || 'Sin nombre';
   const sorted = [...users].sort((a, b) => fullName(a).localeCompare(fullName(b), 'es'));
   const orphans = pets.filter((p) => !users.some((u) => u.id === p.ownerId));
+  const KINDS = [['all', 'Todos', () => true], ['app', '🐾 App', (u) => u.app], ['clinic', '🏥 Clínica', (u) => u.clinic], ['muni', '🏛️ Municipal', (u) => u.muni]];
+  let kind = sessionStorage.getItem('petsafe-admin-kind') || 'all';
+  if (!KINDS.some(([k]) => k === kind)) kind = 'all';
+  // Si no dejó teléfono, el de su clínica o municipalidad sirve para ubicarlo.
+  const phoneLine = (u) => {
+    if (u.phone) return `<a href="tel:${esc(u.phone.replace(/[^\d+]/g, ''))}">${esc(u.phone)}</a>`;
+    const t = u.teams.find((x) => x.placePhone);
+    return t ? `<a href="tel:${esc(t.placePhone.replace(/[^\d+]/g, ''))}">${esc(t.placePhone)}</a> <span class="muted">(de ${esc(t.place)})</span>` : 'No informó';
+  };
 
   const petItem = (p) => `
     <li>
@@ -416,18 +460,20 @@ async function usuarios(panel, { refresh }) {
   panel.innerHTML = `
     <div class="card wide">
       <h2>Usuarios (${users.length}) · Mascotas (${pets.length})</h2>
-      <input class="search" type="search" id="uq" placeholder="🔍 Buscar usuario: nombre, teléfono o correo" autocomplete="off">
+      <div class="chips user-kinds">${KINDS.map(([k, l, f]) => `<button type="button" class="chip ${k === kind ? 'on' : ''}" data-kind="${k}">${l} (${users.filter(f).length})</button>`).join('')}</div>
+      <input class="search" type="search" id="uq" placeholder="🔍 Buscar: nombre, teléfono, correo, clínica o municipalidad" autocomplete="off">
       <ul class="user-list">${sorted.map((u) => {
         const own = petsOf(u.id);
         return `
-        <li data-u="${esc(u.id)}" data-text="${esc([fullName(u), u.phone, u.email, u.address].join(' '))}">
+        <li data-u="${esc(u.id)}" data-kinds="${['all', u.app && 'app', u.clinic && 'clinic', u.muni && 'muni'].filter(Boolean).join(' ')}" data-text="${esc([fullName(u), u.phone, u.email, u.address, ...u.teams.map((t) => t.place)].join(' '))}">
           <button type="button" class="user-row" aria-expanded="false">
-            <span><strong>${esc(fullName(u))}</strong><small>${esc([u.email, u.phone].filter(Boolean).join(' · ') || 'Sin datos de contacto')}</small></span>
-            <span class="count">🐾 ${own.length}</span>
+            <span><strong>${esc(fullName(u))}</strong><small>${esc([u.email, u.phone].filter(Boolean).join(' · ') || 'Sin datos de contacto')}</small>
+              ${u.teams.length ? `<small class="user-teams">${u.teams.map((t) => esc(teamText(t))).join('<br>')}</small>` : ''}</span>
+            ${u.app || own.length ? `<span class="count">🐾 ${own.length}</span>` : ''}
           </button>
           <div class="user-detail" hidden>
-            <p class="small">📞 ${esc(u.phone || 'No informó')}<br>✉️ ${esc(u.email || 'No informó')}<br>🏠 ${esc(u.address || 'No informó')}<br>Usuario desde ${esc(day(u.createdAt) || '—')}<br>${u.promos ? `✅ Acepta ofertas${u.promosAt ? ` desde ${esc(day(u.promosAt))}` : ''}` : '🚫 No acepta ofertas'}</p>
-            ${own.length ? `<ul class="pet-list">${own.map(petItem).join('')}</ul>` : '<p class="muted">Sin mascotas registradas.</p>'}
+            <p class="small">📞 ${phoneLine(u)}<br>✉️ ${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : 'No informó'}<br>🏠 ${esc(u.address || 'No informó')}<br>Usuario desde ${esc(day(u.createdAt) || '—')}${u.hasProfile ? `<br>${u.promos ? `✅ Acepta ofertas${u.promosAt ? ` desde ${esc(day(u.promosAt))}` : ''}` : '🚫 No acepta ofertas'}` : '<br>Entra solo a Kiltrazo ' + (u.muni && !u.clinic ? 'Municipal' : 'Clínica') + ', sin perfil en la app.'}</p>
+            ${own.length ? `<ul class="pet-list">${own.map(petItem).join('')}</ul>` : u.app ? '<p class="muted">Sin mascotas registradas.</p>' : ''}
             <span class="row-actions">
               <button type="button" class="btn small" data-msg="${esc(u.id)}">Enviar mensaje</button>
               ${own.length ? `<button type="button" class="btn small ghost" data-move="${esc(u.id)}">Pasar mascotas a otra cuenta</button>` : ''}
@@ -454,14 +500,23 @@ async function usuarios(panel, { refresh }) {
     b.nextElementSibling.hidden = !open;
   }));
   const norm = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  panel.querySelector('#uq').addEventListener('input', (e) => {
-    const q = norm(e.target.value.trim());
+  const filter = () => {
+    const q = norm(panel.querySelector('#uq').value.trim());
     const qd = q.replace(/\D/g, '');
     panel.querySelectorAll('[data-u]').forEach((li) => {
       const t = norm(li.dataset.text);
-      li.hidden = !!q && !t.includes(q) && !(qd.length >= 3 && t.replace(/\D/g, '').includes(qd));
+      li.hidden = !li.dataset.kinds.split(' ').includes(kind) ||
+        (!!q && !t.includes(q) && !(qd.length >= 3 && t.replace(/\D/g, '').includes(qd)));
     });
-  });
+  };
+  panel.querySelector('#uq').addEventListener('input', filter);
+  panel.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => {
+    kind = b.dataset.kind;
+    sessionStorage.setItem('petsafe-admin-kind', kind);
+    panel.querySelectorAll('[data-kind]').forEach((x) => x.classList.toggle('on', x === b));
+    filter();
+  }));
+  filter();
   // Borrar no se puede deshacer: se confirma escribiendo el nombre.
   const confirmName = (name, what) => {
     const typed = prompt(`${what} No se puede deshacer.\n\nPara confirmar, escribe: ${name}`);
@@ -475,7 +530,8 @@ async function usuarios(panel, { refresh }) {
   panel.querySelectorAll('[data-deluser]').forEach((b) => b.addEventListener('click', async () => {
     const u = users.find((x) => x.id === b.dataset.deluser);
     const n = petsOf(u.id).length;
-    if (!confirmName(fullName(u), `Se borrará la cuenta de ${fullName(u)}${n ? ` y sus ${n === 1 ? 'mascota' : `${n} mascotas`}` : ''}.`)) return;
+    const team = u.teams.length ? ` También sale del equipo de ${u.teams.map((t) => t.place).join(', ')}.` : '';
+    if (!confirmName(fullName(u), `Se borrará la cuenta de ${fullName(u)}${n ? ` y sus ${n === 1 ? 'mascota' : `${n} mascotas`}` : ''}.${team}`)) return;
     try {
       await adminDeleteUser(u.id);
       toast(`${fullName(u)} fue eliminado`, 'ok');
@@ -501,7 +557,7 @@ async function usuarios(panel, { refresh }) {
     box.hidden = !box.hidden;
     if (box.dataset.ready) return;
     box.dataset.ready = '1';
-    const others = users.filter((u) => u.id !== from.id);
+    const others = users.filter((u) => u.id !== from.id && u.hasProfile);
     userSearch(box.querySelector('input'), box.querySelector('ul'), others, (u) => `
       <li><span><strong>${esc(fullName(u))}</strong><small>${esc([u.phone, u.email].filter(Boolean).join(' · ') || 'Sin datos')} · desde ${esc(day(u.createdAt))}</small></span>
       <button type="button" class="btn small primary" data-to="${esc(u.id)}">Pasar aquí</button></li>`, (list) => {
@@ -829,7 +885,8 @@ function dogAvatar(fur) {
 // Descarga de usuarios y mascotas para el administrador. Estos datos no se
 // muestran en ninguna otra parte de la app.
 async function datos(panel, { refresh }) {
-  const [users, pets, push] = await Promise.all([listUsers(), allPets(), pushConfigured()]);
+  const [{ people: users, pets }, push] = await Promise.all([loadPeople(), pushConfigured()]);
+  const staff = users.filter((u) => u.teams.length).length;
   panel.innerHTML = `
     ${CLOUD ? `
       <div class="card" id="push">
@@ -842,8 +899,8 @@ async function datos(panel, { refresh }) {
       </div>` : ''}
     <div class="card">
       <h2>Usuarios y mascotas</h2>
-      <p>${users.length} usuario${users.length === 1 ? '' : 's'} · ${pets.length} mascota${pets.length === 1 ? '' : 's'} registrada${pets.length === 1 ? '' : 's'}</p>
-      <p class="muted small">Una fila por mascota con los datos de su dueño; los usuarios sin mascotas aparecen en una fila sin mascota. Se abre en Excel o Google Sheets. El ZIP trae además la foto de cada mascota, con el nombre de archivo en la columna Foto.</p>
+      <p>${users.length} usuario${users.length === 1 ? '' : 's'}${staff ? ` (${staff} de Clínica o Municipal)` : ''} · ${pets.length} mascota${pets.length === 1 ? '' : 's'} registrada${pets.length === 1 ? '' : 's'}</p>
+      <p class="muted small">Una fila por mascota con los datos de su dueño; los usuarios sin mascotas, como los equipos de clínicas y municipalidades, aparecen en una fila sin mascota. Las columnas “Usa Kiltrazo” y “Clínica o municipalidad” dicen dónde trabaja cada uno. Se abre en Excel o Google Sheets. El ZIP trae además la foto de cada mascota, con el nombre de archivo en la columna Foto.</p>
       <button class="btn primary big" id="zip">Descargar CSV con fotos (ZIP)</button>
       <button class="btn secondary" id="csv">Solo CSV</button>
     </div>
@@ -873,8 +930,9 @@ async function datos(panel, { refresh }) {
 
   userSearch(panel.querySelector('#q'), panel.querySelector('#results'), users, (u) => {
     const own = pets.filter((p) => p.ownerId === u.id);
-    return `<li><span><strong>${esc(u.firstName ? `${u.firstName} ${u.lastName}` : u.name)}</strong>
-      <small>📞 ${esc(u.phone)}${u.email ? ` · ✉️ ${esc(u.email)}` : ''}</small>
+    return `<li><span><strong>${esc(fullName(u))}</strong>
+      <small>${esc([u.phone && `📞 ${u.phone}`, u.email && `✉️ ${u.email}`].filter(Boolean).join(' · ') || 'Sin datos de contacto')}</small>
+      ${u.teams.length ? `<small>${u.teams.map((t) => esc(teamText(t))).join('<br>')}</small>` : ''}
       ${u.address ? `<small>🏠 ${esc(u.address)}</small>` : ''}
       <small>🐾 ${own.length ? own.map((p) => `${esc(p.name)}${describe(p) ? ` (${esc(describe(p))})` : ''}${p.status === 'lost' ? ' (perdida)' : ''}`).join(', ') : 'Sin mascotas'}</small></span>
       <button type="button" class="btn small" data-msg="${esc(u.id)}">Mensaje</button></li>`;
@@ -895,14 +953,15 @@ async function datos(panel, { refresh }) {
   }
   const table = () => {
     const header = [
-      'Nombres', 'Apellidos', 'Teléfono', 'Correo', 'Dirección', 'Usuario desde', 'Acepta ofertas', 'Aceptó ofertas el',
+      'Nombres', 'Apellidos', 'Teléfono', 'Correo', 'Dirección', 'Usuario desde', 'Acepta ofertas', 'Aceptó ofertas el', 'Usa Kiltrazo', 'Clínica o municipalidad',
       'Mascota', 'Tipo', 'Raza', 'Nombre del dueño (registro)', 'Estado', 'Enfermedades', 'Vacunas', 'Mascota registrada', 'Foto',
     ];
     // Celdas vacías con texto, para distinguir "no lo llenó" de un error.
     const or = (v, empty = 'No informó') => (v && String(v).trim()) || empty;
     const person = (u) => (u
-      ? [u.firstName || u.name, u.lastName, u.phone, u.email, u.address, day(u.createdAt), u.promos ? 'Sí' : 'No', u.promos ? day(u.promosAt) || '' : '']
-      : ['Sin perfil', '', '', '', '', '', '', '']);
+      ? [u.firstName || u.name, u.lastName, u.phone || u.teams.find((t) => t.placePhone)?.placePhone || '', u.email, u.address, day(u.createdAt),
+        u.promos ? 'Sí' : 'No', u.promos ? day(u.promosAt) || '' : '', usesText(u), u.teams.map((t) => `${t.place} (${t.role}${t.isAdmin ? ', administra' : ''})`).join(' / ')]
+      : ['Sin perfil', '', '', '', '', '', '', '', '', '']);
     const rows = pets.map((p) => [
       ...person(users.find((u) => u.id === p.ownerId)),
       or(p.name, 'Sin nombre'), SPECIES[p.species] || 'No informó', or(p.breed), or(p.ownerName), p.status === 'lost' ? 'Perdida' : 'En casa',

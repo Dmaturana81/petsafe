@@ -183,6 +183,17 @@ export async function listUsers() {
   return rows(await run(sb().from('profiles').select('*').order('created_at')));
 }
 
+// Correo de cada cuenta (también las de Clínica y Municipal sin perfil).
+// Si aún no se corre el SQL nuevo, la lista sigue funcionando sin ellos.
+export async function listAccounts() {
+  try {
+    return rows(await run(sb().rpc('admin_accounts')));
+  } catch (err) {
+    console.warn('Cuentas', err);
+    return [];
+  }
+}
+
 // ---------- Mascotas ----------
 
 export async function registerPet(_owner, { name, species = '', breed = '', ownerName, diseases, vaccines, photo, biometric, crops }) {

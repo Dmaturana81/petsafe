@@ -23,6 +23,7 @@ export const finishEmailLink = call('finishEmailLink');
 export const sessionToken = call('sessionToken');
 export const adoptSession = call('adoptSession');
 export const listUsers = call('listUsers');
+export const listAccounts = call('listAccounts');
 export const moveUserPets = call('moveUserPets');
 export const adminDeleteUser = call('adminDeleteUser');
 export const adminDeletePet = call('adminDeletePet');
