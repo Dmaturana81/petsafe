@@ -403,6 +403,8 @@ details[open] > summary { display: none; }
 .user-row strong, .user-row small { display: block; }
 .user-row small { color: var(--muted); }
 .user-row .count { font-weight: 800; white-space: nowrap; }
+.user-row .user-teams { color: var(--text); margin-top: 2px; font-weight: 600; }
+.user-kinds { margin: 10px 0; }
 .user-detail { padding: 0 12px 12px; }
 .user-detail[hidden] { display: none; }
 .user-detail .pet-list li { align-items: flex-start; }

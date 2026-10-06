@@ -2807,3 +2807,16 @@ language sql stable security definer set search_path = public as $$
   where p.id = auth.uid() and p.comuna <> '' and d.open and d.day >= (now() at time zone 'America/Santiago')::date;
 $$;
 grant execute on function public.comuna_drives() to authenticated;
+
+-- ---------- Admin: usuarios de Clínica y Municipal ----------
+-- Quien entra a Kiltrazo Clínica o Municipal con correo y clave puede no tener
+-- perfil en la app. Para poder contactarlo, el administrador ve el correo de
+-- su cuenta y desde cuándo existe.
+create or replace function public.admin_accounts() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Solo administradores'; end if;
+  return (select coalesce(jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'created_at', u.created_at)), '[]'::jsonb)
+    from auth.users u where coalesce(u.email, '') <> '');
+end $$;
+grant execute on function public.admin_accounts() to authenticated;

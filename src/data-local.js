@@ -29,6 +29,7 @@ export async function switchUser(userId) {
 }
 
 export const listUsers = () => db.all('users');
+export const listAccounts = async () => (await db.all('users')).filter((u) => u.email).map(({ id, email, createdAt }) => ({ id, email, createdAt }));
 
 /** El administrador pasa las mascotas de una cuenta a otra (celular perdido). */
 export async function moveUserPets(fromId, toId) {
