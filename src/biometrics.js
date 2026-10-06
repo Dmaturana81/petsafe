@@ -26,7 +26,13 @@ export const SIZE = 224;
 // Umbral de coincidencia de la cara, contra la captura más parecida.
 // dino: valor inicial, a calibrar con pruebas reales. mobilenet: registros
 // antiguos. Mismos valores que face_threshold() en supabase/schema.sql.
-const THRESHOLDS = { dino: 0.78, mobilenet: 0.8, basic: 0.92 };
+export const THRESHOLDS = { dino: 0.78, mobilenet: 0.8, basic: 0.92 };
+// Algo menos parecido que el umbral: se muestra como "¿es esta?" para que una
+// persona decida. Igual que suggest_threshold() en supabase/schema.sql.
+export const SUGGEST_MARGIN = 0.15;
+// Si el dueño no la ha marcado como perdida, el aviso automático pide un
+// parecido mayor. Igual que unlost_threshold() en supabase/schema.sql.
+export const UNLOST_MARGIN = 0.08;
 
 const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.0-dev.20260914-8d85527a0/dist/';
 const HEAD_MODEL = 'models/pet-head.onnx';
@@ -195,7 +201,7 @@ async function locateHead(canvas) {
   if (best < 0) return false;
   const bw = d[2 * count + best] / k, bh = d[3 * count + best] / k;
   const cx = (d[best] - dx) / k, cy = (d[count + best] - dy) / k;
-  return { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh, head: true };
+  return { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh, head: true, score };
 }
 
 /**
@@ -314,7 +320,7 @@ function compareFace(a, b) {
   const bs = [b[model].vector, ...(b[model].samples || [])];
   let score = 0;
   for (const x of as) for (const y of bs) if (x.length === y.length) score = Math.max(score, dot(x, y));
-  return { score, model, match: score >= THRESHOLDS[model] };
+  return { score, model, match: score >= THRESHOLDS[model], suggest: score >= THRESHOLDS[model] - SUGGEST_MARGIN };
 }
 
 /**
@@ -330,7 +336,12 @@ export function compare(a, b) {
   const nose = a?.nose && b?.nose ? compareFace(a.nose, b.nose) : null;
   const noseHelps = nose && nose.model === face.model && face.model !== 'basic' &&
     nose.score >= NOSE.threshold && face.score >= THRESHOLDS[face.model] - NOSE.faceMargin;
-  return { ...face, match: face.match || noseHelps, nose: nose && nose.score };
+  return {
+    ...face,
+    match: face.match || noseHelps,
+    sure: face.model !== 'basic' && face.model != null && face.score >= THRESHOLDS[face.model] + UNLOST_MARGIN,
+    nose: nose && nose.score,
+  };
 }
 
 // Mismos valores que is_pet_match() en supabase/schema.sql.
@@ -349,6 +360,15 @@ export function consistency(embeddings) {
     return others.reduce((acc, o) => acc + dot(e[model], o[model]), 0) / others.length;
   });
   return { scores, min: CONSISTENCY_MIN[model] };
+}
+
+/**
+ * Parecido entre dos capturas (0 a 1) con el mejor descriptor que tengan las
+ * dos. Sirve para saber si una captura nueva muestra otro ángulo.
+ */
+export function similarity(a, b) {
+  const model = commonModel([a, b]);
+  return model ? dot(a[model], b[model]) : 0;
 }
 
 // Solo detecta errores gruesos (otro animal, foto equivocada).

@@ -52,8 +52,8 @@ img { max-width: 100%; }
   backdrop-filter: blur(8px);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.3rem; color: var(--text); text-decoration: none; }
-.brand-paw { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 12px; background: var(--coral); color: #fff; }
-.brand-paw svg { width: 22px; height: 22px; }
+.brand-logo { height: 46px; width: auto; display: block; }
+.welcome-logo { display: block; width: min(150px, 42%); height: auto; margin: 0 auto 4px; }
 .bell { position: relative; font-size: 1.4rem; text-decoration: none; padding: 6px; }
 .badge {
   position: absolute; top: 0; right: -2px; min-width: 20px; height: 20px; padding: 0 5px;
@@ -127,6 +127,8 @@ img { max-width: 100%; }
   text-decoration: none; color: var(--text);
 }
 .register-cta > span:first-child { font-size: 1.8rem; }
+.home-drives { display: grid; gap: 12px; }
+.home-drives:empty { display: none; }
 .register-cta strong { display: block; }
 .register-cta small { color: var(--muted); }
 .register-cta .chev { margin-left: auto; font-size: 1.8rem; color: var(--coral); }
@@ -203,6 +205,11 @@ img { max-width: 100%; }
   transition: stroke-dashoffset 0.3s ease;
 }
 .scan-frame.done .scan-ring circle { stroke: var(--green); }
+/* Filmando: el anillo late mientras se completa, como Face ID. */
+.scan-frame.scanning .scan-ring circle { animation: scan-pulse 1.1s ease-in-out infinite; }
+@keyframes scan-pulse { 50% { stroke-width: 8; stroke: var(--coral); } }
+.shot.ok { animation: shot-in 0.35s ease-out; }
+@keyframes shot-in { from { transform: scale(0.6); } }
 .scan-hint {
   width: 100%; text-align: center; padding: 10px 14px;
   background: var(--cream); border: 2px solid var(--sun); border-radius: 16px;
@@ -226,6 +233,9 @@ img { max-width: 100%; }
 }
 .pick:has(input:checked) { border-color: var(--green); background: #eef7ef; }
 .pick input { accent-color: var(--green); }
+/* Dentro de un formulario (por ejemplo, reservar un operativo) sigue en fila. */
+.form label.pick { display: flex; gap: 12px; }
+.form .pick input[type="radio"] { width: auto; flex: none; padding: 0; }
 .pick img, .pet-list img, .admin-list img, .admin-list-row img {
   width: 56px; height: 56px; object-fit: cover; border-radius: 16px; background: var(--peach); flex: none;
 }
@@ -342,3 +352,499 @@ img { max-width: 100%; }
 .contact-msg { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .contact-msg p { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .contact-msg.unread strong::before { content: '● '; color: var(--coral); }
+
+/* Confirmación después de escanear */
+.scan-ok {
+  margin: 0 0 12px; padding: 12px 14px; border-radius: 14px;
+  background: #eef7ef; border: 2px solid var(--green); font-weight: 800; text-align: center;
+}
+
+/* Perfil guardado: datos de solo lectura */
+.info { display: grid; gap: 2px; margin: 0 0 14px; }
+.info dt { font-size: 0.8rem; font-weight: 800; color: var(--muted); margin-top: 8px; }
+.info dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.info[hidden] { display: none; }
+.my-pets li { display: block; }
+.my-pets .pet-row { display: flex; align-items: center; gap: 12px; }
+.my-pets .pet-row > span { flex: 1; }
+.pet-edit { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.form[hidden] { display: none; }
+
+/* "Entrar con mi correo": el botón abre el formulario */
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+details[open] > summary { display: none; }
+
+/* Alarma de "¡Encontraron a tu mascota!" */
+.alarm {
+  position: fixed; inset: 0; z-index: 1100;
+  display: grid; place-items: center; padding: 16px;
+  background: rgba(200, 40, 30, 0.92);
+  animation: alarm-flash 1.2s ease-in-out infinite;
+}
+.alarm-box {
+  background: #fff8ef; color: #3a2a20; border-radius: 20px; padding: 24px 20px;
+  max-width: 420px; width: 100%; text-align: center;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.alarm-box h1 { margin: 0; font-size: 1.6rem; }
+.alarm-box p { margin: 0; }
+.alarm-icon { font-size: 4rem; line-height: 1; animation: alarm-shake 0.6s ease-in-out infinite; }
+@keyframes alarm-flash { 50% { background: rgba(240, 110, 40, 0.92); } }
+@keyframes alarm-shake { 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) { .alarm, .alarm-icon { animation: none; } }
+
+/* Admin → Usuarios: tocar un usuario muestra sus mascotas */
+.user-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
+.user-list > li { border-radius: 14px; background: var(--cream); }
+.user-list > li[hidden] { display: none; }
+.user-row { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; }
+.user-row > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.user-row strong, .user-row small { display: block; }
+.user-row small { color: var(--muted); }
+.user-row .count { font-weight: 800; white-space: nowrap; }
+.user-row .user-teams { color: var(--text); margin-top: 2px; font-weight: 600; }
+.user-kinds { margin: 10px 0; }
+.user-detail { padding: 0 12px 12px; }
+.user-detail[hidden] { display: none; }
+.user-detail .pet-list li { align-items: flex-start; }
+.user-detail .pet-list small { display: block; overflow-wrap: anywhere; }
+
+/* Guía para sujetar a la mascota en la foto (botón ⓘ del escáner) */
+.tips-open {
+  font: inherit; font-weight: 800; font-size: 0.95rem; cursor: pointer;
+  padding: 8px 16px; border-radius: 999px; border: 2px solid var(--sun);
+  background: var(--cream); color: var(--coral-dark);
+}
+.tips-sheet {
+  position: fixed; inset: 0; z-index: 1050; background: rgba(59, 42, 32, 0.55);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.tips-body {
+  position: relative; width: min(100%, 520px); max-height: 92vh; overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  display: grid; gap: 12px;
+}
+.tips-body h2 { margin: 0 40px 0 0; }
+.tips-body p { margin: 0; }
+.tips-close {
+  position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; border-radius: 50%;
+  border: 0; background: var(--cream); font-size: 1.1rem; cursor: pointer; color: var(--text);
+}
+.tip { display: grid; gap: 8px; padding: 12px; border-radius: 16px; background: var(--cream); }
+.tip h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.05rem; }
+.tip h3 span {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--coral); color: #fff; font-size: 0.9rem;
+}
+.tip svg { width: 100%; height: auto; background: #fff; border-radius: 12px; }
+.tip.avoid { background: #fde6df; }
+.tip.avoid h3 span { background: var(--coral-dark); }
+
+/* Galería: opción secundaria, para cuando la mascota no está presente */
+.gallery-link { display: grid; gap: 2px; text-align: center; cursor: pointer; font-size: 0.95rem; }
+.gallery-link[hidden] { display: none; }
+
+/* Casilla de ofertas y política de privacidad */
+.consent, .form .consent { display: flex; gap: 10px; align-items: flex-start; font-size: 0.85rem; font-weight: 600; color: var(--muted); background: var(--cream); border-radius: 12px; padding: 10px 12px; }
+.consent input { width: 22px; height: 22px; flex: none; margin: 2px 0 0; accent-color: var(--coral); }
+.legal h2 { font-size: 1.05rem; margin: 18px 0 6px; }
+.legal ul { padding-left: 20px; margin: 0; }
+.legal li { margin: 4px 0; }
+.consent span { font-weight: 400; color: var(--text); }
+
+/* Admin: reconocimiento */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.stat { background: var(--cream); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; }
+.stat strong { font-size: 1.3rem; }
+.stat small { color: var(--muted); font-weight: 700; }
+.stat.hi strong, .tone-auto { color: #3f8f5b; }
+.stat.mid strong, .tone-people { color: #c77a12; }
+.stat.lo strong, .tone-none { color: var(--muted); }
+.recon-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+.recon-list li { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: start; }
+.recon-list img { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; }
+.recon-list strong { display: block; }
+.recon-list small { color: var(--muted); }
+.score-row { display: flex; justify-content: space-between; font-size: 0.8rem; margin-top: 8px; color: var(--muted); }
+.score-row strong { color: var(--text); }
+.score-bar { position: relative; height: 8px; border-radius: 4px; background: var(--cream); margin-top: 3px; }
+.score-bar b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.score-bar b.hi { background: #5aa876; }
+.score-bar b.mid { background: var(--orange); }
+.score-bar b.lo { background: #c9b8ab; }
+.score-bar .mark { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: 0.35; z-index: 1; }
+.tone-test { color: #4f7fb8; }
+
+/* Mi veterinaria (Kiltrazo Clínica) en el perfil */
+.pet-vet-btn { padding: 4px 0 0 66px; text-align: left; }
+.pet-vet { margin: 8px 0 4px; padding: 12px 14px; background: var(--cream); border-radius: 16px; }
+.pet-vet h3 { margin: 0 0 6px; font-size: 0.9rem; }
+.vet-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.vet-list li { display: grid; font-size: 0.9rem; }
+.vet-list small { color: var(--muted); }
+.vet-list b.late { color: #b3402a; }
+.vet-code-out { display: grid; justify-items: center; gap: 8px; margin-top: 8px; }
+.vet-code-big { font-size: 2rem; letter-spacing: 0.25em; font-weight: 900; }
+.my-pets .pet-vet img.vet-qr { width: 180px; height: 180px; object-fit: contain; border-radius: 12px; background: #fff; }
+
+/* Avisos de mascotas perdidas cerca */
+.pick.selected { border-color: var(--green); background: #eef7ef; }
+.nearby-ask { border: 2px solid #f6c7b9; background: #fff6f1; }
+.lost-alert .lost-photo { width: 160px; height: 160px; object-fit: cover; border-radius: 24px; margin: 0 auto 12px; display: block; }
+.vet-appt-foot { display: flex; gap: 10px; align-items: center; }
+.vet-status { font-size: 0.78rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--peach); }
+.vet-status.ok { background: #e1f2e3; color: #2f6b38; }
+.vet-status.go { background: #fff1c2; }
+.vet-book { margin: 10px 0 18px; }
+.vet-place { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.vet-place label.pick { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 700; padding: 10px; }
+.vet-place .pick[hidden] { display: none; }
+.vet-address { display: grid; gap: 6px; }
+.vet-address[hidden] { display: none; }
+
+/* Clínicas cercanas (urgencias) */
+.alert-strip.ok { background: #e1f2e3; color: #2f6b38; margin-bottom: 12px; }
+.clinics-cta { margin-bottom: 12px; }
+.clinics-head h1 { margin-bottom: 4px; }
+.clinics-map { height: 260px; border-radius: 18px; overflow: hidden; margin-top: 10px; }
+.clinics-list { display: grid; gap: 10px; }
+.clinic-card { display: grid; gap: 6px; }
+.clinic-card.on { outline: 3px solid var(--sun); }
+.clinic-card p { margin: 0; }
+.clinic-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.clinic-km { font-size: 0.85rem; font-weight: 800; color: var(--muted); white-space: nowrap; }
+.clinic-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.clinic-tags:empty { display: none; }
+.clinic-tag { font-size: 0.75rem; font-weight: 800; padding: 2px 10px; border-radius: 999px; background: var(--cream); }
+.clinic-tag.urgent { background: #fde0da; color: #b3402a; }
+.clinic-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.clinic-btns .btn { padding: 12px 8px; }
+.clinic-btns .btn:only-child { grid-column: 1 / -1; }
+.clinic-marker span { font-size: 28px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.3)); }
+.clinic-marker.urgent span { font-size: 34px; }
+.receive { text-align: center; }
+.receive-photo { width: 140px; height: 140px; object-fit: cover; border-radius: 28px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 3rem; background: var(--peach); }
+.form .vet-place input { width: 20px; height: 20px; padding: 0; flex: none; }
+.vet-free[hidden], .vet-slots[hidden] { display: none; }
+.vet-slots { display: grid; gap: 8px; }
+.vet-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.vet-chip { font: inherit; font-size: 0.9rem; font-weight: 700; padding: 8px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+.vet-chip.on { background: var(--sun); border-color: var(--sun); }
+
+/* Administrador: clínicas de Kiltrazo y traspaso de mascotas */
+.admin-clinic { border-top: 1px solid var(--line, #eee); padding: 12px 0; display: grid; gap: 8px; }
+.admin-clinic:first-of-type { border-top: 0; }
+.admin-clinic-head strong, .admin-clinic-head small { display: block; }
+.admin-clinic-head small { color: var(--muted); }
+.admin-clinic .warn { display: inline-block; margin-top: 4px; background: #fdecea; color: #b3261e; border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-weight: 700; }
+.admin-team { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.admin-team li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-radius: 14px; background: var(--cream); }
+.admin-team li > span { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.admin-team li > button { white-space: nowrap; }
+.admin-team strong, .admin-team small { display: block; }
+.admin-team small { color: var(--muted); }
+.admin-invite summary { list-style: none; cursor: pointer; }
+.admin-invite[open] > summary { display: block; }
+.admin-invite .row-actions { margin: 8px 0; align-items: center; }
+.admin-invite select { width: auto; font: inherit; padding: 6px 10px; border-radius: 10px; border: 2px solid var(--line); background: var(--bg); color: var(--text); }
+.invite-code { display: grid; justify-items: center; background: var(--cream); border-radius: 14px; padding: 12px; margin: 0; }
+.invite-code b { font-size: 1.8rem; letter-spacing: 0.25em; }
+.invite-code small { color: var(--muted); }
+.move-box { margin-top: 10px; display: grid; gap: 8px; }
+.move-box p { margin: 0; }
+.save-account { text-align: center; }
+.save-account .save-icon { font-size: 3rem; line-height: 1; margin-bottom: 4px; }
+.save-account .form { text-align: left; }
+.save-account .btn.ghost { width: 100%; margin-top: 8px; }
+.admin-clinic .admin-del { justify-self: start; padding-left: 0; padding-right: 0; }
+
+/* Administrador en el computador: menú a la izquierda y tarjetas en dos columnas */
+.admin-page { display: contents; }
+@media (min-width: 900px) {
+  body.admin-mode #app { max-width: 1280px; padding-bottom: 24px; }
+  body.admin-mode .tabbar { display: none; }
+  body.admin-mode .admin-page { display: grid; grid-template-columns: 230px 1fr; gap: 24px; align-items: start; }
+  body.admin-mode .admin-head { position: sticky; top: 84px; }
+  body.admin-mode .admin-head h1 { font-size: 1.5rem; margin: 0; }
+  body.admin-mode .tabs { flex-direction: column; flex-wrap: nowrap; }
+  body.admin-mode .tab { text-align: left; border-radius: 14px; padding: 12px 16px; background: transparent; }
+  body.admin-mode .tab:hover { background: var(--cream); }
+  body.admin-mode .tab.on { background: var(--coral); }
+  body.admin-mode #panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  body.admin-mode #panel > .card { margin: 0; }
+  body.admin-mode #panel > .card.wide { grid-column: 1 / -1; }
+  body.admin-mode .user-list, body.admin-mode .admin-clinics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; align-items: start; }
+  body.admin-mode .admin-clinic, body.admin-mode .admin-clinic:first-of-type { border-top: 0; border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+}
+.btn.urgent { background: #d9472b; color: #fff; }
+.clinic-card .form { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.clinic-done { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: #e6f4ea; color: #2f6b3c; font-weight: 600; }
+.clinic-btns:has(> .btn[hidden]) > .btn { grid-column: 1 / -1; }
+.appt-card { text-align: center; }
+.appt-when { margin: 0; color: var(--muted); }
+.appt-time { margin: 0; font-size: 3rem; font-weight: 800; color: var(--orange); line-height: 1.1; }
+.appt-card h1 { margin: 6px 0; font-size: 1.3rem; }
+.appt-btns { display: grid; gap: 8px; margin: 16px 0 10px; }
+.appt-state { margin: 16px 0 10px; padding: 10px 12px; border-radius: 12px; background: #f6efe9; font-weight: 600; }
+.appt-state.ok { background: #e6f4ea; color: #2f6b3c; }
+.admin-clinics + p, h2 .warn { font-size: 0.85rem; }
+h2 .warn { display: inline-block; vertical-align: middle; margin-left: 6px; background: #fff1d6; color: #8a5a00; border-radius: 999px; padding: 2px 10px; font-weight: 700; }
+.admin-clinic.pending .warn { background: #fff1d6; color: #8a5a00; }
+.admin-clinic.pending { background: #fffaf0; }
+.clinic-tag.home { background: #e2ecf8; color: #2b4a7a; }
+
+/* Página propia de la clínica (también para quien no tiene la app). */
+body.web-mode .tabbar, body.web-mode .topbar { display: none; }
+.web-head { text-align: center; display: grid; gap: 8px; justify-items: center; }
+.web-head h1 { margin: 4px 0 0; }
+.web-head p { margin: 0; }
+.web-head .clinic-btns { width: 100%; }
+.web-logo { max-width: 200px; max-height: 110px; object-fit: contain; }
+.web-by { font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 4px; margin-top: 6px !important; }
+.web-by img { height: 14px; }
+.web-app { text-align: center; display: grid; gap: 10px; justify-items: center; }
+.web-app-logo { height: 38px; }
+.web-app h2 { margin: 0; }
+.web-list { text-align: left; margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.web-list li { background: var(--cream); border-radius: 14px; padding: 10px 12px; }
+.web-app .btn { width: 100%; }
+.web-qr { display: grid; justify-items: center; gap: 6px; }
+.web-qr p { margin: 0; font-size: 0.9rem; }
+.web-guest h3 { margin: 8px 0 0; }
+.web-head .clinic-btns .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+/* Página de la clínica en el computador: datos a la izquierda, pedir hora a la derecha. */
+.web-page { display: grid; gap: 16px; }
+.web-app-top, .web-app-info, .web-app-do { display: grid; gap: 10px; justify-items: center; width: 100%; }
+@media (min-width: 900px) {
+  body.web-mode #app { max-width: 1120px; padding: 32px 24px; }
+  .web-page { grid-template-columns: 380px 1fr; gap: 24px; align-items: start; }
+  .web-page > .card { margin: 0; }
+  .web-head { position: sticky; top: 24px; padding: 28px 24px; }
+  .web-app { grid-template-columns: 1fr 280px; gap: 18px 28px; text-align: left; align-items: start; padding: 28px; }
+  .web-app-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; justify-content: flex-start; }
+  .web-app-top h2 { font-size: 1.4rem; }
+  .web-app-info { justify-items: stretch; }
+  .web-app-do { background: var(--cream); border-radius: 18px; padding: 18px; text-align: center; }
+  .web-app-do .btn { width: 100%; }
+  #web-step .vet-book { padding: 28px; }
+}
+
+.install-card h2 { margin: 0 0 4px; }
+.install-card .btn { width: 100%; margin: 8px 0 4px; }
+.install-steps { margin: 8px 0 0; padding-left: 22px; display: grid; gap: 6px; }
+.install-sheet .tips-body { gap: 10px; }
+.install-sheet .install-logo { width: 64px; height: 64px; border-radius: 16px; }
+.install-sheet .install-steps { font-size: 1.05rem; gap: 10px; }
+.install-sheet .btn { width: 100%; }
+.install-ico { display: inline-block; border: 1.5px solid currentColor; border-radius: 4px; padding: 0 4px; font-size: 0.8em; }
+
+/* Especialidades */
+.spec-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+.spec-tag { background: #eef3fb; color: #34507a; border-radius: 999px; padding: 2px 10px; font-size: 0.78rem; font-weight: 700; }
+.spec-pick { border: 0; padding: 0; margin: 4px 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.spec-pick legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.spec-pick legend small { font-weight: 400; color: var(--muted); }
+.spec-chip { display: inline-flex; cursor: pointer; }
+.spec-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.spec-chip span { border: 2px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 0.88rem; font-weight: 600; background: var(--card, #fff); }
+.spec-chip input:checked + span { background: #eef3fb; border-color: #4f7fb8; color: #34507a; }
+.spec-chip input:focus-visible + span { outline: 3px solid #4f7fb8; outline-offset: 2px; }
+.spec-filter { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 10px; scrollbar-width: none; }
+.spec-filter .chip { white-space: nowrap; padding: 6px 12px; font-size: 0.88rem; }
+.chip.on { background: #eef3fb; border-color: #4f7fb8; color: #34507a; }
+.finder-link { display: flex; gap: 10px; align-items: center; text-decoration: none; color: inherit; background: #eef3fb; }
+
+/* Buscador de veterinarios (…/#/veterinarios) */
+body.finder-mode #app { max-width: 1200px; padding: 0 16px 40px; }
+.fd-top { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; gap: 10px; }
+.fd-brand img { height: 34px; display: block; }
+.fd-top nav { display: flex; gap: 14px; align-items: center; font-size: 0.9rem; }
+.fd-top nav a:not(.btn) { color: var(--muted); }
+.fd-hero { text-align: center; padding: 18px 0 8px; }
+.fd-hero h1 { font-size: 1.7rem; margin: 0 0 6px; }
+.fd-hero > p { color: var(--muted); margin: 0 auto 16px; max-width: 560px; }
+.fd-search { display: grid; gap: 8px; max-width: 820px; margin: 0 auto; }
+.fd-search input, .fd-search select { width: 100%; }
+.fd-toggles { display: flex; gap: 8px; justify-content: center; margin: 12px 0 4px; flex-wrap: wrap; }
+.fd-toggles .chip { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; font-size: 0.9rem; }
+.fd-toggles .chip input { position: absolute; opacity: 0; pointer-events: none; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.fd-body { display: grid; gap: 14px; margin-top: 16px; }
+.fd-map-wrap { order: -1; }
+.fd-map { height: 240px; border-radius: 18px; overflow: hidden; }
+.fd-count { color: var(--muted); font-size: 0.88rem; margin: 0 0 8px; }
+.fd-list { display: grid; gap: 12px; align-content: start; }
+.fd-card { margin: 0; }
+.fd-card.on { outline: 3px solid #4f7fb8; }
+.fd-card p { margin: 4px 0; }
+.fd-card-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.fd-app { display: grid; gap: 12px; justify-items: center; text-align: center; margin-top: 28px; }
+.fd-app h2 { margin: 0 0 8px; }
+.fd-app-logo { height: 40px; }
+.fd-foot { text-align: center; color: var(--muted); font-size: 0.92rem; padding: 20px 0; }
+@media (min-width: 900px) {
+  .fd-hero h1 { font-size: 2.3rem; }
+  .fd-search { grid-template-columns: 1.4fr 1fr auto; }
+  .fd-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; }
+  .fd-map-wrap { order: 0; position: sticky; top: 16px; }
+  .fd-map { height: calc(100vh - 32px); max-height: 640px; }
+  .fd-list { max-height: none; }
+  .fd-app { grid-template-columns: auto 1fr; text-align: left; justify-items: start; padding: 28px; }
+  .fd-app-logo { height: 56px; }
+}
+.fd-ads { position: relative; margin: 18px auto 0; max-width: 1200px; }
+.fd-ad { display: none; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
+.fd-ad.on { display: block; }
+.fd-ad img { display: block; width: 100%; aspect-ratio: 4 / 1; object-fit: cover; }
+.fd-ad-label { position: absolute; top: 8px; left: 8px; z-index: 1; background: rgba(0, 0, 0, .55); color: #fff; font-size: 0.7rem; font-weight: 700; border-radius: 6px; padding: 2px 8px; }
+.fd-ad-dots { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
+.fd-ad-dots button { width: 8px; height: 8px; border-radius: 50%; border: 0; background: var(--line); padding: 0; cursor: pointer; }
+.fd-ad-dots button.on { background: var(--accent, #f47920); }
+.banner-admin { display: grid; gap: 12px; }
+.banner-row { display: grid; grid-template-columns: 240px 1fr; gap: 14px; align-items: start; }
+.banner-row img { width: 100%; aspect-ratio: 4 / 1; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+.banner-row > div { display: grid; gap: 2px; }
+.banner-dates { display: grid; grid-template-columns: 1fr 1fr 90px; gap: 8px; }
+@media (max-width: 600px) { .banner-row { grid-template-columns: 1fr; } .banner-dates { grid-template-columns: 1fr 1fr; } }
+.fd-search.form { gap: 8px; }
+.fd-search label { margin: 0; }
+.fd-search .btn { white-space: nowrap; }
+.fd-top nav .btn { white-space: nowrap; }
+.fd-ads { max-width: 860px; }
+@media (max-width: 600px) { .fd-top nav a:not(.btn) { display: none; } .fd-hero h1 { font-size: 1.5rem; } }
+
+/* Presentación de la app (#/kiltrazo) */
+.ld-link { background: none; border: 0; padding: 0; font: inherit; color: var(--muted); cursor: pointer; }
+.ld-hero { display: grid; gap: 24px; padding: 20px 0 8px; }
+.ld-hero-text { text-align: center; }
+.ld-pill { display: inline-block; background: var(--peach); color: var(--coral-dark); font-weight: 800; font-size: 0.8rem; border-radius: 999px; padding: 4px 12px; }
+.ld-hero h1 { font-size: 1.85rem; line-height: 1.15; margin: 12px 0 10px; }
+.ld-hero-text > p { color: var(--muted); font-size: 1.05rem; margin: 0 auto 18px; max-width: 520px; }
+.ld-hero .btn.big { font-size: 1.1rem; padding: 14px 28px; }
+.ld-alt { margin: 20px 0 0; font-size: 0.92rem; }
+.ld-qr-box { display: flex; gap: 16px; align-items: center; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; text-align: left; max-width: 480px; }
+.ld-qr { flex: none; }
+.ld-qr img { width: 132px; height: 132px; max-width: none; display: block; }
+.ld-qr-box p { margin: 4px 0 8px; }
+.ld-hero-phones { position: relative; display: flex; justify-content: center; min-height: 420px; }
+.ld-phone { margin: 0; width: 200px; aspect-ratio: 9 / 18; border-radius: 30px; border: 8px solid #3b2a1e; overflow: hidden; background: #fff; box-shadow: 0 18px 40px rgba(74, 52, 40, .25); }
+.ld-phone img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+.ld-hero-phones .back { position: absolute; transform: translateX(-70px) rotate(-6deg) scale(.9); opacity: .95; }
+.ld-hero-phones .front { position: relative; transform: translateX(60px) rotate(3deg); }
+.ld-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 12px 10px; margin-top: 18px; text-align: center; }
+.ld-stats b { display: block; font-size: 1.7rem; color: var(--coral); }
+.ld-stats span { font-size: 0.8rem; color: var(--muted); line-height: 1.3; display: block; }
+.ld-cite { grid-column: 1 / -1; font-size: 0.72rem; color: var(--muted); margin: 6px 0 0; }
+.ld-sec { margin-top: 36px; }
+.ld-sec > h2 { text-align: center; font-size: 1.45rem; margin: 0 0 16px; }
+.ld-steps, .ld-feats { display: grid; gap: 12px; }
+.ld-steps .card, .ld-feats .card { margin: 0; }
+.ld-steps h3, .ld-feats h3 { margin: 6px 0; font-size: 1.05rem; }
+.ld-steps p, .ld-feats p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+.ld-num { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--coral); color: #fff; font-weight: 800; }
+.ld-feats span { font-size: 1.8rem; }
+.ld-split { display: grid; gap: 20px; justify-items: center; }
+.ld-split > div h2 { font-size: 1.45rem; margin: 0 0 8px; }
+.ld-split > div > p { color: var(--muted); }
+.ld-install { text-align: center; }
+.ld-install > h2 { margin-top: 0; }
+.ld-install > p { color: var(--muted); max-width: 560px; margin: 0 auto 14px; }
+.ld-os { display: grid; gap: 12px; text-align: left; margin-bottom: 14px; }
+.ld-os > div { background: var(--cream); border-radius: 16px; padding: 12px 16px; }
+.ld-os h3 { margin: 0 0 4px; }
+.ld-os ol { margin: 0; padding-left: 20px; }
+.ld details.card { margin: 0 0 10px; padding: 14px 18px; }
+.ld summary { font-weight: 800; cursor: pointer; }
+.ld details p { margin: 8px 0 0; color: var(--muted); }
+.ld-vets { display: grid; gap: 12px; justify-items: center; text-align: center; margin-top: 36px; background: #eef3fb; }
+.ld-vets h2 { margin: 0 0 6px; font-size: 1.25rem; }
+.ld-vets p { margin: 0; color: var(--muted); }
+@media (min-width: 900px) {
+  .ld-hero { grid-template-columns: 1.1fr 1fr; align-items: center; padding: 40px 0 20px; }
+  .ld-hero-text { text-align: left; }
+  .ld-hero h1 { font-size: 3rem; }
+  .ld-hero-text > p { margin-left: 0; font-size: 1.15rem; }
+  .ld-hero-phones { min-height: 520px; }
+  .ld-phone { width: 240px; }
+  .ld-stats { padding: 24px; }
+  .ld-stats b { font-size: 2.4rem; }
+  .ld-stats span { font-size: 0.92rem; }
+  .ld-steps { grid-template-columns: repeat(3, 1fr); }
+  .ld-feats { grid-template-columns: repeat(4, 1fr); }
+  .ld-split { grid-template-columns: 1.2fr 1fr; align-items: center; padding: 0 40px; }
+  .ld-os { grid-template-columns: 1fr 1fr; max-width: 640px; margin: 0 auto 14px; }
+  .ld details.card { max-width: 760px; margin: 0 auto 10px; }
+  .ld-vets { grid-template-columns: 1fr auto; text-align: left; justify-items: start; align-items: center; padding: 28px; }
+}
+@media (max-width: 600px) {
+  .ld-hero-phones { min-height: 360px; }
+  .ld-phone { width: 170px; }
+  .ld-hero-phones .back { transform: translateX(-55px) rotate(-6deg) scale(.9); }
+  .ld-hero-phones .front { transform: translateX(45px) rotate(3deg); }
+  .ld .fd-top nav .ld-link { display: none; }
+}
+.ld-group { text-align: center; color: var(--coral-dark); font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; margin: 22px 0 10px; }
+@media (min-width: 900px) { .ld-feats { grid-template-columns: repeat(3, 1fr); } }
+.ld-what p { text-align: center; color: var(--muted); font-size: 1.08rem; max-width: 720px; margin: 0 auto; }
+@media (max-width: 600px) {
+  .ld-feats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ld-feats .card { padding: 14px; }
+  .ld-feats h3 { font-size: 0.95rem; }
+  .ld-feats p { font-size: 0.85rem; }
+  .ld-feats span { font-size: 1.5rem; }
+}
+.ld-hero-text .ld-qr-box + .ld-alt { margin-top: 22px; }
+.admin-review { margin: 6px 0 0; line-height: 1.8; }
+.admin-review .warn { margin-top: 0; }
+
+/* Aviso de cookies (solo aparece si hay Google Analytics o píxel de Meta) */
+.cookie-bar {
+  position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 1100;
+  max-width: 536px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+  box-shadow: 0 8px 30px rgba(152, 92, 52, 0.18);
+}
+.cookie-bar p { margin: 0; font-size: 0.9rem; line-height: 1.4; }
+.cookie-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.cookie-btns .btn { flex: 1; }
+body.web-mode .cookie-bar, body.admin-mode .cookie-bar, body.clinic-mode .cookie-bar { bottom: calc(16px + env(safe-area-inset-bottom)); }
+@media (min-width: 900px) {
+  .cookie-bar { flex-direction: row; align-items: center; max-width: 860px; }
+  .cookie-btns .btn { flex: none; }
+}
+
+/* Página del QR de la placa del collar (#/placa): sin menú, centrada. */
+body.web-mode .tag-top { justify-content: center; margin-bottom: 12px; }
+body.web-mode:has(.tag-top) #app { max-width: 560px; padding: 16px 16px 40px; }
+.tag-top .fd-brand img { height: 40px; }
+a.card.tag-only { display: flex; gap: 12px; align-items: center; text-decoration: none; color: inherit; }
+.tag-only > span:first-child { font-size: 1.8rem; }
+.tag-only small { display: block; color: var(--muted, #8a6a55); margin-top: 2px; }
+
+/* Mascota que ya no está contigo: pasarla a otra persona o eliminarla */
+.pet-bye { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 10px; }
+.pet-bye > p { margin: 0 0 6px; }
+.pet-bye .row-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.gift-out { margin-top: 10px; background: var(--cream); border-radius: 16px; padding: 12px; }
+.gift-out p { margin: 0 0 8px; }
+.my-pets .gift-qr, .gift-qr { width: 180px; height: 180px; display: block; margin: 0 auto 10px; border-radius: 12px; }
+.del-box { margin-top: 10px; background: #fdece8; border-radius: 16px; padding: 12px; }
+.del-box p { margin: 0 0 8px; }
+.del-box .btn.danger { background: #c4492f; color: #fff; }
+.del-box .btn.danger:disabled { opacity: .45; }
+
+/* Operativo municipal: horarios para reservar cupo */
+.drive-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.drive-slot { position: relative; display: grid; justify-items: center; gap: 2px; padding: 10px 6px; border: 2px solid var(--line); border-radius: 14px; cursor: pointer; background: var(--surface); }
+.drive-slot input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; }
+.drive-slot b { font-size: 1.1rem; }
+.drive-slot small { color: var(--muted); font-size: 0.8rem; }
+.drive-slot:has(input:checked) { border-color: var(--green); background: #eef7ef; }
+.drive-slot.full { opacity: 0.45; cursor: default; }
+.drive-notes { background: var(--cream); border-radius: 12px; padding: 10px 12px; text-align: left; }
+.receive-promos { text-align: left; width: 100%; }

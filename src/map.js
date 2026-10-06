@@ -29,6 +29,13 @@ export function showPoint(el, { lat, lng }) {
   return map;
 }
 
+/** Zona aproximada (círculo de ~300 m) sin marcar el punto exacto. */
+export function showArea(el, { lat, lng }) {
+  const map = base(el, [lat, lng], 15);
+  L.circle([lat, lng], { radius: 300, color: '#e85d4a', fillColor: '#f2785c', fillOpacity: 0.25, weight: 2 }).addTo(map);
+  return map;
+}
+
 /** Mapa para elegir un punto (toque para mover el marcador). */
 export function pickPoint(el, initial, onChange) {
   const start = initial ? [initial.lat, initial.lng] : DEFAULT_CENTER;
@@ -56,4 +63,42 @@ export const TRAVEL_MODES = [
 
 export function directionsUrl({ lat, lng }, mode) {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=${mode}`;
+}
+
+const clinicIcon = (urgent, home = false) => L.divIcon({
+  className: `clinic-marker${urgent ? ' urgent' : ''}`,
+  html: `<span>${home ? '🏠' : '🏥'}</span>`,
+  iconSize: [40, 40],
+  iconAnchor: [20, 36],
+});
+
+/** Clínicas en el mapa; al tocar una se llama onPick(clinic). */
+export function showClinics(el, clinics, here, onPick) {
+  const first = here || clinics[0] || { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] };
+  const map = base(el, [first.lat, first.lng], here ? 13 : 12);
+  if (here) L.circleMarker([here.lat, here.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#4f7fb8', fillOpacity: 1 }).addTo(map);
+  for (const c of clinics) {
+    // Veterinario a domicilio: el punto es aproximado, así que se marca su zona.
+    if (c.onlyHome) L.circle([c.lat, c.lng], { radius: 1000, color: '#4f7fb8', weight: 2, dashArray: '6 6', fillOpacity: 0.12 }).addTo(map);
+    L.marker([c.lat, c.lng], { icon: clinicIcon(c.emergencies, c.onlyHome), title: c.name }).addTo(map).on('click', () => onPick(c));
+  }
+  if (here && clinics.length) map.fitBounds(L.latLngBounds([[here.lat, here.lng], ...clinics.slice(0, 3).map((c) => [c.lat, c.lng])]).pad(0.2), { maxZoom: 15 });
+  return map;
+}
+
+const boardIcon = (kind) => L.divIcon({
+  className: `board-marker ${kind}`,
+  html: `<span>${kind === 'lost' ? '🔴' : kind === 'found' ? '🟢' : '🟡'}</span>`,
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+/** Kiltrazo Municipal: la comuna (círculo) con los perdidos y encontrados. */
+export function showBoard(el, center, km, points) {
+  const map = base(el, [center.lat, center.lng], 13);
+  const area = L.circle([center.lat, center.lng], { radius: km * 1000, color: '#4f7fb8', weight: 2, dashArray: '6 6', fillOpacity: 0.05 }).addTo(map);
+  for (const p of points) L.marker([p.lat, p.lng], { icon: boardIcon(p.kind), title: p.label }).addTo(map).bindPopup(p.label);
+  // Después de que el mapa toma su tamaño (si no, queda muy alejado).
+  setTimeout(() => { map.invalidateSize(); map.fitBounds(area.getBounds(), { padding: [10, 10] }); }, 80);
+  return map;
 }

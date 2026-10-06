@@ -18,13 +18,13 @@ export default async function match(el, { id }, { user }) {
   changed();
 
   const phone = waNumber(report.finderPhone);
-  const waText = encodeURIComponent(`Hola ${report.finderName}, soy el dueño de ${pet.name}. ¡Gracias por encontrarla! ¿Cómo coordinamos?`);
+  const waText = encodeURIComponent(`Hola${report.finderName ? ` ${report.finderName}` : ''}, soy el dueño de ${pet.name}. ¡Gracias por encontrarla! ¿Cómo coordinamos?`);
 
   el.innerHTML = `
     <div class="card center success-banner">
       <div class="empty-emoji">🥳</div>
       <h1>¡Encontraron a ${esc(pet.name)}!</h1>
-      <p>${esc(report.finderName)} la escaneó ${timeAgo(report.createdAt)}.</p>
+      <p>${esc(report.finderName || 'Alguien')} la escaneó ${timeAgo(report.createdAt)}${report.source === 'placa' ? ' con el QR de su placa' : ''}.</p>
       <div class="compare">
         <figure><img src="${esc(pet.photo)}" alt=""><figcaption>Tu registro</figcaption></figure>
         <figure><img src="${esc(report.photo)}" alt=""><figcaption>Foto de hoy</figcaption></figure>

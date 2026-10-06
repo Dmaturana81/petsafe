@@ -1,0 +1,389 @@
+/* Kiltrazo Clínica: pantallas de escritorio (y celular) para veterinarias.
+   Usa la misma paleta de la app. Todo con prefijo ck- para no chocar. */
+
+body.clinic-mode #app { max-width: none; padding-bottom: 0; }
+body.clinic-mode .topbar, body.clinic-mode .tabbar { display: none; }
+body.clinic-mode #view { padding: 0; display: block; }
+
+.ck { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh;
+  background: linear-gradient(to right, var(--surface) 231px, var(--line) 231px, var(--line) 232px, transparent 232px); }
+.ck-side {
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px; padding: 18px 12px;
+  background: var(--surface); border-right: 1px solid var(--line);
+}
+.ck-visit-row[open] > summary strong { color: var(--coral-dark); }
+.ck-brand { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.15rem; padding: 0 8px; }
+.ck-brand b { color: var(--coral-dark); }
+.ck-logo { height: 30px; width: auto; }
+.ck-logo.big { height: 64px; }
+.ck-clinic { font-size: 0.82rem; color: var(--muted); padding: 2px 8px 14px; }
+.ck-clinic-pick { margin: 6px 4px 12px; font: inherit; font-size: 0.85rem; padding: 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
+.ck-navs { display: flex; flex-direction: column; gap: 2px; }
+.ck-nav {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 8px 12px; border-radius: 12px; font-weight: 800; font-size: 0.95rem; color: var(--text); text-decoration: none; white-space: nowrap;
+}
+.ck-nav:hover { background: var(--cream); }
+.ck-nav.on { background: var(--peach); color: var(--coral-dark); }
+.ck-nav.later { color: var(--muted); font-weight: 600; cursor: default; }
+.ck-nav.later:hover { background: none; }
+.ck-count { white-space: nowrap; font-size: 0.72rem; font-weight: 800; border-radius: 999px; padding: 1px 8px; background: var(--cream); color: var(--muted); }
+.ck-count.hot { background: var(--coral); color: #fff; }
+.ck-me { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--line); display: grid; gap: 2px; font-size: 0.85rem; }
+.ck-me span { color: var(--muted); }
+
+.ck-main { padding: 22px 28px 40px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ck-main .card { padding: 18px; border-radius: 18px; box-shadow: 0 2px 10px rgba(152, 92, 52, 0.08); border: 1px solid var(--line); }
+.ck-main h2 { font-size: 1.05rem; }
+.ck-main h3 { margin: 0 0 8px; font-size: 0.95rem; }
+.ck-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ck-head h1 { margin: 0; }
+.ck-sub { margin: 2px 0 0; color: var(--muted); }
+.ck-sub::first-letter { text-transform: uppercase; }
+.ck-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ck-actions .btn, .ck-row-end .btn { width: auto; }
+.ck-select { font: inherit; font-size: 0.85rem; padding: 6px 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); }
+.ck-empty { color: var(--muted); margin: 0; padding: 6px 0; }
+.ck-mono { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.ck-pre { white-space: pre-wrap; margin: 0 0 8px; }
+.ck-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ck-cols-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+
+/* Formularios en grilla */
+.ck-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ck-form-grid h2 { margin: 6px 0 0; }
+.ck-span { grid-column: 1 / -1; }
+.ck-span2 { grid-column: span 2; }
+.ck-row-end { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ck-row-end .ck-ddel { margin-right: auto; }
+.form .ck-check { display: flex; align-items: center; gap: 8px; align-self: end; padding-bottom: 12px; }
+.form .ck-check input { width: 20px; height: 20px; flex: none; }
+.ck-code-input { text-transform: uppercase; letter-spacing: 0.3em; font-size: 1.3rem !important; font-weight: 800; }
+.ck-code { display: grid; justify-items: center; background: var(--cream); border-radius: 14px; padding: 14px; margin: 0; }
+.ck-code b { font-size: 2rem; letter-spacing: 0.25em; }
+.ck-code small { color: var(--muted); }
+
+/* Agenda */
+.ck-list { display: flex; flex-direction: column; }
+.ck-appt { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px 6px; border-top: 1px solid var(--line); }
+.ck-appt:first-child, .ck-list h2 + .ck-appt { border-top: 0; }
+.ck-appt.en_atencion { background: var(--cream); border-radius: 12px; }
+.ck-appt.no_vino, .ck-appt.cancelada, .ck-appt.atendida { opacity: 0.6; }
+.ck-time { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ck-order { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--coral); color: #fff; }
+.ck-appt-main { display: grid; min-width: 0; }
+.ck-appt-main a { color: inherit; }
+.ck-appt-main small, .ck-prow small, .ck-member small, .ck-table small { color: var(--muted); display: block; }
+.ck-row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.ck-pill { font-size: 0.75rem; font-weight: 800; padding: 2px 10px; border-radius: 999px; background: var(--cream); color: var(--muted); white-space: nowrap; }
+.ck-pill.en_sala { background: #fff1c7; color: #8a6200; }
+.ck-pill.en_atencion { background: var(--peach); color: var(--coral-dark); }
+.ck-pill.atendida { background: #e3f2e5; color: var(--green-dark); }
+
+/* Pacientes */
+.ck-search { font: inherit; padding: 12px 16px; border-radius: 14px; border: 2px solid var(--line); background: var(--surface); width: 100%; box-sizing: border-box; }
+.ck-search:focus { outline: none; border-color: var(--orange); }
+.ck-prow { display: grid; grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 6px; border-top: 1px solid var(--line); color: inherit; text-decoration: none; border-radius: 12px; }
+.ck-prow:first-child { border-top: 0; }
+.ck-prow:hover { background: var(--cream); }
+.ck-prow-main, .ck-prow-tutor { display: grid; min-width: 0; }
+.ck-avatar { width: 44px; height: 44px; border-radius: 14px; object-fit: cover; display: grid; place-items: center; background: linear-gradient(135deg, var(--sun), var(--coral)); color: #fff; font-weight: 900; font-size: 1.2rem; }
+.ck-avatar.big { width: 84px; height: 84px; border-radius: 20px; font-size: 2rem; }
+.ck-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.ck-tag { font-size: 0.75rem; font-weight: 800; border-radius: 999px; padding: 2px 10px; background: var(--cream); color: var(--muted); white-space: nowrap; }
+.ck-tag.red { background: #fde3dd; color: #b3402a; }
+.ck-tag.green { background: #e3f2e5; color: var(--green-dark); }
+.ck-tag.sun { background: #fff1c7; color: #8a6200; }
+
+/* Ficha del paciente */
+.ck-patient { display: flex; flex-direction: column; gap: 14px; }
+.ck-pat { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px; align-items: center; }
+.ck-pat h1 { margin: 0 0 2px; }
+.ck-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted); margin-bottom: 8px; }
+.ck-facts b { color: var(--text); }
+.ck-tutor { display: grid; gap: 2px; text-align: right; font-size: 0.9rem; color: var(--muted); }
+.ck-tutor strong { color: var(--text); font-size: 1rem; }
+.ck-tutor-btns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+.ck-tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--line); overflow-x: auto; }
+.ck-tabs a { padding: 9px 14px; font-weight: 800; color: var(--muted); text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap; }
+.ck-tabs a.on { color: var(--coral-dark); border-color: var(--coral); }
+.ck-tabs small { background: var(--cream); border-radius: 999px; padding: 0 7px; }
+.ck-pgrid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.ck-pcol { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ck-pside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ck-vrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 0.9rem; }
+.ck-vrow:first-of-type { border-top: 0; }
+.ck-vrow small { display: block; color: var(--muted); font-size: 0.78rem; }
+
+.ck-visit { grid-template-columns: 1fr; }
+.ck-templates { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.85rem; color: var(--muted); }
+.ck-tpl { font: inherit; font-size: 0.82rem; border: 1.5px dashed var(--line); background: none; border-radius: 10px; padding: 3px 10px; color: var(--muted); cursor: pointer; }
+.ck-tpl.on { border-style: solid; border-color: var(--coral); color: var(--coral-dark); font-weight: 800; }
+.ck-vitals { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.ck-vitals label { font-size: 0.85rem; grid-template-rows: 1fr auto; }
+.ck-short { max-width: 240px; }
+.ck-attach { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.ck-attach .btn { width: auto; cursor: pointer; }
+.ck-pending { display: flex; gap: 6px; flex-wrap: wrap; }
+.ck-file-chip { display: inline-flex; gap: 6px; align-items: center; font-size: 0.82rem; font-weight: 700; background: var(--cream); border-radius: 10px; padding: 4px 10px; margin: 2px 6px 2px 0; color: var(--text); text-decoration: none; }
+.ck-file-chip button { border: 0; background: none; font-size: 1rem; cursor: pointer; color: var(--muted); }
+
+.ck-history { padding: 6px 18px !important; }
+.ck-visit-row { border-top: 1px solid var(--line); }
+.ck-visit-row:first-child { border-top: 0; }
+.ck-visit-row > summary, .ck-visit-row[open] > summary { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; padding: 12px 0; cursor: pointer; list-style: none; }
+.ck-visit-row summary::-webkit-details-marker { display: none; }
+.ck-visit-row summary small { display: block; color: var(--muted); }
+.ck-date { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.9rem; padding-top: 1px; }
+.ck-visit-body { padding: 0 0 14px 108px; }
+.ck-visit-body h4 { margin: 8px 0 2px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.ck-vitals-line { font-weight: 700; }
+
+.ck-table-wrap { overflow-x: auto; }
+.ck-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.ck-table th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 6px 8px; border-bottom: 2px solid var(--line); }
+.ck-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ck-table tr:last-child td { border-bottom: 0; }
+.ck-table tr.old { opacity: 0.55; }
+.ck-table a { color: inherit; }
+
+.ck-upload-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.ck-upload-btns .btn { width: auto; cursor: pointer; }
+.ck-files { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+.ck-file { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px; display: grid; gap: 2px; align-content: start; }
+.ck-file small { color: var(--muted); }
+.ck-file .link { justify-self: start; padding: 0; }
+.ck-thumb { display: grid; place-items: center; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; background: #2e2a2a; margin-bottom: 6px; }
+.ck-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ck-thumb span { color: var(--coral-dark); font-weight: 900; background: var(--cream); width: 100%; height: 100%; display: grid; place-items: center; }
+
+.ck-chart { width: 100%; height: auto; display: block; }
+.ck-chart .grid { stroke: var(--line); stroke-width: 1; }
+.ck-chart .area { fill: var(--cream); }
+.ck-chart .line { fill: none; stroke: var(--coral); stroke-width: 2.5; stroke-linejoin: round; }
+.ck-chart .dot { fill: var(--coral); }
+.ck-chart text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+
+.ck-member { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+.ck-list h2 + .ck-member { border-top: 0; }
+.ck-explain ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+
+/* Entrada */
+.ck-start { max-width: 860px; margin: 0 auto; padding: 32px 16px; display: grid; gap: 18px; }
+.ck-start-head { text-align: center; display: grid; justify-items: center; gap: 4px; }
+.ck-start-head h1 { font-size: 2rem; margin: 6px 0 0; }
+.ck-start-head h1 b { color: var(--coral-dark); }
+.ck-start-head p { max-width: 52ch; color: var(--muted); margin: 0; }
+.ck-start-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+
+/* Celular y tablet angosta */
+@media (max-width: 900px) {
+  .ck { grid-template-columns: minmax(0, 1fr); background: none; }
+  .ck-tag { white-space: normal; }
+  .ck-side { position: sticky; top: 0; z-index: 10; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 10px 12px 8px; gap: 4px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .ck-brand { font-size: 1rem; padding: 0; }
+  .ck-logo { height: 24px; }
+  .ck-clinic { padding: 0; flex: 1; text-align: right; }
+  .ck-clinic-pick { margin: 0; flex: 1; }
+  .ck-navs { flex-direction: row; overflow-x: auto; width: 100%; gap: 4px; padding-bottom: 2px; }
+  .ck-nav { white-space: nowrap; padding: 6px 12px; font-size: 0.9rem; }
+  .ck-nav.later, .ck-me { display: none; }
+  .ck-main { padding: 14px 14px 32px; }
+  .ck-pgrid, .ck-cols-2, .ck-start-cols { grid-template-columns: minmax(0, 1fr); }
+  .ck-pside { order: 2; }
+  .ck-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ck-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ck-pat { grid-template-columns: auto minmax(0, 1fr); }
+  .ck-tutor { grid-column: 1 / -1; text-align: left; }
+  .ck-tutor-btns { justify-content: flex-start; }
+  .ck-avatar.big { width: 64px; height: 64px; }
+  .ck-appt { grid-template-columns: 48px minmax(0, 1fr) auto; }
+  .ck-row-actions { grid-column: 2 / -1; justify-content: flex-start; }
+  .ck-prow { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .ck-prow-tutor { display: none; }
+  .ck-visit-body { padding-left: 0; }
+  .ck-visit-row summary { grid-template-columns: 84px minmax(0, 1fr); }
+}
+
+/* Solicitudes de hora y visitas a domicilio */
+.ck-pill.solicitada { background: #fde4dc; color: var(--coral-dark); }
+.ck-pill.en_camino { background: #e2ecf8; color: #3c628f; }
+.ck-appt.solicitada { background: #fff6f1; border-radius: 12px; }
+.ck-appt-main small.ck-home a { color: var(--coral-dark); }
+.ck-req { margin-bottom: 12px; gap: 10px; }
+.ck-req p { margin: 0; }
+.ck-req-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ck-req-head small { display: block; color: var(--muted); }
+.ck-req-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ck-day-title { margin: 18px 0 8px; }
+.ck-day-title::first-letter { text-transform: uppercase; }
+.ck-visits { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.ck-visit { display: grid; gap: 8px; }
+.ck-visit h2 { margin: 0; font-size: 1.15rem; }
+.ck-visit h2 small { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+.ck-visit p { margin: 0; }
+.ck-visit.en_camino { border: 2px solid #b9cfe9; }
+.ck-visit.en_atencion { border: 2px solid var(--sun); }
+.ck-time-big { font-size: 1.4rem; font-weight: 900; }
+.ck-visit-addr { font-weight: 700; }
+.ck-visit-go, .ck-visit-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ck-visit-go span { font-size: 0.85rem; font-weight: 800; }
+.ck-visit-main .btn { width: 100%; padding: 14px; font-size: 1.05rem; }
+.ck-map-pick { display: grid; gap: 6px; }
+.ck-map-pick p { margin: 0; }
+.ck-map { height: 220px; border-radius: 14px; overflow: hidden; border: 2px solid var(--line); }
+@media (max-width: 760px) {
+  .ck-req-grid { grid-template-columns: 1fr 1fr; }
+  .ck-visits { grid-template-columns: minmax(0, 1fr); }
+}
+.ck-photo-row { display: flex; align-items: center; gap: 12px; }
+.ck-photo-row img[hidden] { display: none; }
+.ck-transfer #ck-transfer-out { display: grid; justify-items: center; gap: 8px; margin-top: 8px; text-align: center; }
+.ck-transfer-qr { width: 170px; height: 170px; border-radius: 12px; background: #fff; }
+.ck-req-grid[hidden] { display: none; }
+.ck-scan-ok { color: var(--green-dark); font-weight: 700; }
+.ck-transfer #ck-scanner { margin: 8px 0; }
+.ck-transfer p { margin: 6px 0; }
+
+/* Días de trabajo */
+.ck-sched { margin-top: 16px; gap: 0; }
+.ck-sched > p { margin: 0 0 8px; }
+.ck-sched-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ck-sched-head h2 { margin: 0; }
+.ck-sched-row { display: grid; grid-template-columns: 110px auto 1fr; gap: 6px 14px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.ck-seg { display: inline-flex; border: 2px solid var(--line); border-radius: 12px; overflow: hidden; }
+.form .ck-seg label { display: block; font-weight: 700; }
+.ck-seg input { position: absolute; opacity: 0; pointer-events: none; }
+.ck-seg span { display: block; padding: 7px 12px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.ck-seg label + label span { border-left: 2px solid var(--line); }
+.ck-seg input:checked + span { background: var(--sun); }
+.ck-seg input[value="clinica"]:checked + span { background: #e3f2e5; }
+.ck-seg input[value="domicilio"]:checked + span { background: #e2ecf8; }
+.ck-sched-hours { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+.ck-sched-hours[hidden] { display: none; }
+.form .ck-sched-hours input { width: 7.5em; padding: 7px 8px; }
+.ck-sched-other { grid-column: 2 / -1; color: #8a6200; font-weight: 700; }
+@media (max-width: 760px) {
+  .ck-sched-row { grid-template-columns: 1fr; }
+  .ck-sched-other { grid-column: 1; }
+}
+.ck-sched-head .ck-select { width: auto; max-width: 60%; }
+@media (max-width: 760px) {
+  .ck-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ck-seg span { text-align: center; padding: 8px 4px; }
+}
+.ck-tip { background: var(--cream); border-radius: 12px; padding: 10px 12px; margin: 10px 0 0; }
+.ck-review { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #fff1d6; color: #6b4a00; font-size: 0.85rem; line-height: 1.35; }
+
+/* ¿Cómo atiendes? Clínica con local o independiente a domicilio. */
+.ck-kind { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.ck-kind legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.form .ck-kind label { display: block; margin: 0; }
+.ck-kind input { position: absolute; opacity: 0; pointer-events: none; }
+.ck-kind span { display: block; padding: 11px 14px; border: 2px solid var(--line); border-radius: 12px; font-weight: 700; cursor: pointer; }
+.ck-kind input:checked + span { border-color: var(--orange); background: var(--cream); }
+.ck-kind input:focus-visible + span { outline: 2px solid var(--orange); outline-offset: 2px; }
+.ck-seg.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Logo propio con "by kiltrazo Clínica" pequeño debajo. */
+.ck-own { display: grid; gap: 4px; justify-items: start; }
+.ck-own-logo { max-width: 170px; max-height: 64px; object-fit: contain; }
+.ck-by { display: flex; align-items: center; gap: 3px; font-size: 0.7rem; color: var(--muted); }
+.ck-by img { height: 11px; }
+.ck-by b { color: var(--coral); font-weight: 800; }
+.ck-logo-field { display: grid; gap: 6px; }
+.ck-logo-label { font-weight: 700; }
+.ck-logo-row { display: flex; align-items: center; gap: 12px; }
+.ck-logo-prev { width: 64px; height: 64px; border: 2px dashed var(--line); border-radius: 14px; display: grid; place-items: center; overflow: hidden; background: #fff; font-size: 1.6rem; }
+.ck-logo-prev img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.form .ck-logo-pick { display: inline-flex; margin: 0; cursor: pointer; }
+
+/* Tu página para pedir hora y el dominio .cl. */
+.ck-web-url { margin: 0; word-break: break-all; background: var(--cream); border-radius: 12px; padding: 8px 12px; }
+.ck-domain summary { cursor: pointer; font-weight: 700; margin: 6px 0; }
+.ck-steps { margin: 6px 0; padding-left: 20px; display: grid; gap: 8px; }
+.ck-web .btn.primary { margin-top: 6px; }
+.ck-guest { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff4d6; border-radius: 12px; padding: 8px 12px; margin: 0; }
+
+/* Aviso por WhatsApp al tutor sin la app (voy en camino / llegué). */
+.ck-sheet { position: fixed; inset: 0; z-index: 50; background: rgba(40, 25, 15, .35); display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
+.ck-sheet-card { width: 100%; max-width: 440px; display: grid; gap: 10px; margin: 0; }
+.ck-sheet-card h2 { margin: 0; font-size: 1.1rem; }
+.ck-sheet-card p { margin: 0; }
+.ck-sheet-card textarea { width: 100%; font: inherit; padding: 10px 12px; border-radius: 14px; border: 1.5px solid var(--line, #f1dfcc); resize: vertical; }
+.ck-sheet-card .btn { text-align: center; }
+@media (min-width: 700px) { .ck-sheet { align-items: center; } }
+
+/* Revisión de Kiltrazo: RUT, título, patente y términos */
+.ck-review-box { border: 2px solid var(--line, #f0e2d6); border-radius: 14px; padding: 12px 14px 14px; margin: 4px 0; display: grid; gap: 10px; min-width: 0; }
+.ck-review-box legend { font-weight: 700; padding: 0 6px; }
+.ck-review-box > p { margin: 0; }
+.ck-doc { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.ck-doc[hidden] { display: none; }
+.ck-doc-label { font-weight: 700; font-size: 0.9rem; flex: 1 1 100%; }
+.form .ck-doc .btn { margin: 0; }
+.ck-doc-name { overflow-wrap: anywhere; }
+.ck-doc-name.ok { color: #2e7d32; font-weight: 600; }
+.ck-review a { color: inherit; }
+.ck-review-card { max-width: 560px; }
+
+/* Quitar un paciente de la clínica */
+.ck-danger { margin-top: 14px; }
+.ck-danger > .link { padding: 0; }
+.ck-danger h3 { margin: 0 0 6px; }
+.ck-danger ul { margin: 0 0 12px; padding-left: 18px; display: grid; gap: 4px; }
+.ck-danger .ck-row-end { display: flex; gap: 8px; justify-content: flex-end; }
+.ck-danger .btn.danger { background: #c4492f; color: #fff; }
+.ck-removed { margin-top: 16px; }
+.ck-removed summary { cursor: pointer; color: var(--muted); font-weight: 700; }
+.ck-removed .ck-list { margin-top: 8px; }
+.ck-removed .ck-prow { opacity: .85; }
+.ck-removed[open] > summary { display: block; }
+.ck-removed > summary::before { content: '▸ '; }
+.ck-removed[open] > summary::before { content: '▾ '; }
+
+/* Kiltrazo Municipal: operativos y tablero de perdidos y encontrados */
+.ck-drive { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 6px; border-top: 1px solid var(--line); color: inherit; text-decoration: none; border-radius: 12px; }
+.ck-list h2 + .ck-drive, .ck-list summary + .ck-drive { border-top: 0; }
+.ck-drive:hover { background: var(--cream); }
+.ck-drive-date { display: grid; justify-items: center; background: var(--peach); color: var(--coral-dark); border-radius: 14px; padding: 6px 0; line-height: 1.1; }
+.ck-drive-date b { font-size: 1.5rem; }
+.ck-drive-date small { text-transform: uppercase; font-weight: 800; font-size: 0.7rem; }
+.ck-drive-main { display: grid; gap: 4px; min-width: 0; }
+.ck-drive-main small { color: var(--muted); }
+.ck-drive-main small::first-letter { text-transform: uppercase; }
+.ck-drive-count { display: grid; justify-items: end; gap: 4px; text-align: right; }
+.ck-drive-count small { color: var(--muted); }
+.ck-drive-services { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.ck-drive-services legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.ck-total { margin: 0; }
+.ck-slot { margin: 14px 0 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ck-share { display: grid; gap: 10px; }
+.ck-share p { margin: 0; }
+.ck-drive-cols { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.ck-board-map { height: 320px; border-radius: 14px; overflow: hidden; border: 2px solid var(--line); }
+.ck-board-map-card p { margin: 8px 0 0; }
+.ck-board-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 6px; border-top: 1px solid var(--line); }
+.ck-list h2 + p + .ck-board-row { border-top: 0; }
+.ck-board-row small { display: block; color: var(--muted); }
+.ck-board-photo { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; display: grid; place-items: center; background: var(--cream); font-size: 1.5rem; }
+.ck-board-pair { display: flex; gap: 4px; }
+.ck-board-matches { border: 2px solid var(--sun) !important; }
+.board-marker span { font-size: 18px; display: grid; place-items: center; }
+@media (max-width: 900px) {
+  .ck-drive { grid-template-columns: 48px minmax(0, 1fr); }
+  .ck-drive-count { grid-column: 2; justify-items: start; text-align: left; }
+  .ck-drive-cols { grid-template-columns: minmax(0, 1fr); }
+  .ck-board-row { grid-template-columns: auto minmax(0, 1fr); }
+  .ck-board-row > :last-child { grid-column: 1 / -1; }
+}
+.ck-rnm { display: grid; gap: 8px; }
+.ck-rnm p { margin: 0; }
+.ck-rnm-copy { display: grid; gap: 4px; }
+.ck-rnm-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+.ck-rnm-row small { display: block; color: var(--muted); font-size: 0.72rem; }
+.ck-rnm-done { margin-top: 6px; }
+.ck-drive-services .spec-chip { position: relative; }
+.ck-drive-services .spec-chip input { width: 1px; height: 1px; }
+a.ck-prow-main { color: inherit; text-decoration: none; }
